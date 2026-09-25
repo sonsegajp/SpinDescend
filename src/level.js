@@ -180,10 +180,13 @@ export function build(level, models) {
   const blocked = new Set(level.entities.map(e => `${e.x},${e.y}`));
 
   const pref = biome === 'dungeon' ? 'dun' : biome === 'mines' ? 'mine' : 'ruin';
-  const walls = { dun: ['dun_wall0', 'dun_wall1', 'dun_wall2'], mine: ['mine_wall0', 'mine_wall1'],
-                  ruin: ['ruin_wall0', 'ruin_wall1', 'ruin_wall2'] }[pref];
-  const floors = { dun: ['dun_floor0', 'dun_floor1'], mine: ['mine_floor0', 'mine_floor1'],
-                   ruin: ['ruin_floor0', 'ruin_floor1'] }[pref];
+  // weighted variant lists (plain pieces most often, the painted set-pieces now and then)
+  const walls = { dun: ['dun_wall0', 'dun_wall0', 'dun_wall0', 'dun_wall1', 'dun_wall1', 'dun_wall2', 'dun_wall3'],
+                  mine: ['mine_wall0', 'mine_wall1'], ruin: ['ruin_wall0', 'ruin_wall1', 'ruin_wall2'] }[pref];
+  const floors = { dun: ['dun_floor0', 'dun_floor0', 'dun_floor0', 'dun_floor1', 'dun_floor1', 'dun_floor2'],
+                   mine: ['mine_floor0', 'mine_floor1'], ruin: ['ruin_floor0', 'ruin_floor1'] }[pref];
+  // corner props: the model's corner is its origin with the room toward model +x/+y
+  const cornerRot = (ix, iz) => (ix > 0 ? (iz < 0 ? 0 : 3 * Math.PI / 2) : (iz < 0 ? Math.PI / 2 : Math.PI));
 
   // ---- floors, ceilings, walls
   const margin = biome === 'ruins' ? 5 : 0;
@@ -250,12 +253,12 @@ export function build(level, models) {
             const others = wallDirs.filter(k => k !== d);
             if (biome === 'dungeon' && others.length && R.chance(0.35)) {
               const d2 = R.pick(others);
-              put('banner', cx + DX[d2] * CELL / 2, 0, cz + DY[d2] * CELL / 2, wallRot(d2));
+              put(R.chance(0.7) ? 'banner' : 'banner_blue', cx + DX[d2] * CELL / 2, 0, cz + DY[d2] * CELL / 2, wallRot(d2));
             }
           }
         } else if (biome === 'dungeon' && wallDirs.length && R.chance(0.07)) {
           const d2 = R.pick(wallDirs);
-          put('banner', cx + DX[d2] * CELL / 2, 0, cz + DY[d2] * CELL / 2, wallRot(d2));
+          put(R.chance(0.7) ? 'banner' : 'banner_blue', cx + DX[d2] * CELL / 2, 0, cz + DY[d2] * CELL / 2, wallRot(d2));
         }
         if (biome === 'ruins' && !busy) {
           for (let k = 0; k < 2; k++) if (R.chance(0.5)) put(R.pick(['grass0', 'grass1']), cx + (R() - 0.5) * 1.6, 0, cz + (R() - 0.5) * 1.6, R() * 6);
@@ -277,6 +280,12 @@ export function build(level, models) {
           const d1 = wallDirs[0], d2 = wallDirs[1];
           put('crate', cx + (DX[d1] + DX[d2]) * 0.58, 0, cz + (DY[d1] + DY[d2]) * 0.58, R() * 0.5);
         }
+        if (!busy && wallDirs.length && R.chance(0.1)) {              // glowing crystal clusters
+          const d = R.pick(wallDirs);
+          const px = cx + DX[d] * 0.72, pz = cz + DY[d] * 0.72;
+          put('crystals', px, 0, pz, wallRot(d));
+          lights.push({ pos: [px - DX[d] * 0.3, 0.5, pz - DY[d] * 0.3], col: [0.25, 0.55, 1.0], radius: 3.0, flicker: 0 });
+        }
         if (!corridorNS && !corridorEW && wallDirs.length && R.chance(0.12)) {
           const d = R.pick(wallDirs);
           const ex = cx + DX[d] * CELL / 2, ez = cz + DY[d] * CELL / 2;
@@ -284,9 +293,21 @@ export function build(level, models) {
           lights.push({ pos: [ex - DX[d] * 0.4, 1.8, ez - DY[d] * 0.4], col: B.torch, radius: B.torchRadius, flicker: R() * 10 });
         }
       }
-      if (biome === 'dungeon' && !busy && wallDirs.length >= 2 && R.chance(0.08)) {
-        const d1 = wallDirs[0], d2 = wallDirs[1];
-        if ((d1 + d2) % 2 === 1) put('crate', cx + (DX[d1] + DX[d2]) * 0.58, 0, cz + (DY[d1] + DY[d2]) * 0.58, R() * 0.4);
+      if (biome === 'dungeon') {
+        // wall corners: cobwebs up high, barrels / crates on the floor
+        const corners = [];
+        for (let i = 0; i < wallDirs.length; i++) for (let j = i + 1; j < wallDirs.length; j++)
+          if ((wallDirs[i] + wallDirs[j]) % 2 === 1) corners.push([wallDirs[i], wallDirs[j]]);
+        for (const [d1, d2] of corners) {
+          const kx = DX[d1] + DX[d2], kz = DY[d1] + DY[d2];
+          if (R.chance(0.35)) put('cobweb', cx + kx * (CELL / 2 - 0.02), 0, cz + kz * (CELL / 2 - 0.02), cornerRot(-kx, -kz));
+          if (!busy && R.chance(0.14)) put(R.chance(0.6) ? 'barrel' : 'crate', cx + kx * 0.6, 0, cz + kz * 0.6, R() * 6);
+        }
+        if (!busy && R.chance(0.08)) put('bones', cx + (R() - 0.5) * 0.9, 0, cz + (R() - 0.5) * 0.9, R() * 6);
+        if (wallDirs.length && R.chance(0.06)) {
+          const d = R.pick(wallDirs);
+          put('chains', cx + DX[d] * 0.62, 0, cz + DY[d] * 0.62, R() * 6);
+        }
       }
     }
   }

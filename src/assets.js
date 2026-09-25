@@ -13,8 +13,9 @@ export const ANIMATED = ['knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mi
 export const MODELS = [
   'knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mimic',
   'slot_machine', 'card',
-  'dun_wall0', 'dun_wall1', 'dun_wall2', 'dun_floor0', 'dun_floor1', 'dun_ceil', 'dun_pillar', 'torch', 'banner', 'stairs',
-  'mine_wall0', 'mine_wall1', 'mine_floor0', 'mine_floor1', 'mine_ceil', 'mine_support', 'rails', 'lantern', 'crate',
+  'dun_wall0', 'dun_wall1', 'dun_wall2', 'dun_wall3', 'dun_floor0', 'dun_floor1', 'dun_floor2', 'dun_ceil', 'dun_pillar',
+  'torch', 'banner', 'banner_blue', 'stairs', 'barrel', 'cobweb', 'chains', 'bones',
+  'mine_wall0', 'mine_wall1', 'mine_floor0', 'mine_floor1', 'mine_ceil', 'mine_support', 'rails', 'lantern', 'crate', 'crystals',
   'ruin_floor0', 'ruin_floor1', 'ruin_wall0', 'ruin_wall1', 'ruin_wall2', 'ruin_pillar0', 'ruin_pillar1',
   'ruin_pillar_short0', 'ruin_tower0', 'ruin_tower1', 'grass0', 'grass1', 'rubble0',
 ];

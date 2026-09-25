@@ -65,6 +65,8 @@ async function boot() {
     fit();
     const q = new URLSearchParams(location.search);
     if (q.get('crt') === '0') pipe.crt = false;
+    if (q.get('ps1') === '0') game.ps1 = false;
+    if (q.get('ps1') === '1') game.ps1 = true;
     if (q.has('diag')) {
       const miss = [];
       for (const kind of ['textures', 'cards', 'icons', 'icons48', 'ui'])

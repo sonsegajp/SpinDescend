@@ -61,6 +61,7 @@ export const ACT = {
   map: ['KeyM', 'PadY'],
   mute: ['KeyN'],
   crt: ['KeyV'],
+  ps1: ['KeyP'],
   cashout: ['KeyC'],
   n1: ['Digit1'], n2: ['Digit2'], n3: ['Digit3'], n4: ['Digit4'],
 };

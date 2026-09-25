@@ -1,5 +1,7 @@
 // render.js - the forward renderer: lit/baked/emissive materials, point lights,
 // fog, banded lighting for the pixel-art look, sky, and model/batch drawing.
+// PS1 mode (world pass only): vertices snap to a coarse screen grid (wobble),
+// textures blend toward affine mapping (warp) and colour is dithered to 15 bit.
 import { gl, program, texFromImage, solidTex } from './gl.js';
 import { ident, mul } from './math.js';
 
@@ -10,19 +12,28 @@ layout(location=2) in vec2 aUV;
 layout(location=3) in vec4 aCol;
 layout(location=4) in vec4 aExtra;
 uniform mat4 uModel, uView, uProj;
-out vec3 vWorld; out vec3 vNrm; out vec2 vUV; out vec4 vCol; out vec2 vExtra;
+uniform vec2 uSnap;
+out vec3 vWorld; out vec3 vNrm; out vec2 vUV; out vec4 vCol; out vec2 vExtra; out vec3 vUVa;
 void main() {
   vec4 w = uModel * vec4(aPos, 1.0);
   vWorld = w.xyz;
   vNrm = mat3(uModel) * aNrm;
   vUV = aUV; vCol = aCol; vExtra = aExtra.xy;
-  gl_Position = uProj * uView * w;
+  vec4 p = uProj * uView * w;
+  if (uSnap.x > 0.0 && p.w > 0.0) {
+    vec2 s = uSnap * 0.5;
+    p.xy = floor(p.xy / p.w * s + 0.5) / s * p.w;
+  }
+  vUVa = vec3(aUV * p.w, p.w);
+  gl_Position = p;
 }`;
 
 const FS = `#version 300 es
 precision highp float;
-in vec3 vWorld; in vec3 vNrm; in vec2 vUV; in vec4 vCol; in vec2 vExtra;
+in vec3 vWorld; in vec3 vNrm; in vec2 vUV; in vec4 vCol; in vec2 vExtra; in vec3 vUVa;
 uniform sampler2D uTex;
+uniform float uAffine, uDither;
+const float BAYER[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
 uniform vec3 uCamPos, uAmbient, uFogColor, uDirDir, uDirCol;
 uniform vec2 uFog;
 uniform int uNumLights;
@@ -33,7 +44,8 @@ uniform vec4 uFlash;
 uniform float uTime, uBands, uFogOn;
 out vec4 frag;
 void main() {
-  vec4 base = texture(uTex, vUV) * vCol * vec4(uTint.rgb, 1.0);
+  vec2 uv = uAffine > 0.0 ? mix(vUV, vUVa.xy / vUVa.z, uAffine) : vUV;
+  vec4 base = texture(uTex, uv) * vCol * vec4(uTint.rgb, 1.0);
   if (base.a < 0.5) discard;
   vec3 n = normalize(vNrm);
   if (!gl_FrontFacing) n = -n;
@@ -60,6 +72,11 @@ void main() {
   float f = clamp((fd - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0) * uFogOn;
   col = mix(col, uFogColor, f * (1.0 - emit * 0.5));
   col = mix(col, uFlash.rgb, uFlash.a);
+  if (uDither > 0.0) {
+    ivec2 q = ivec2(gl_FragCoord.xy) & 3;
+    float b = (BAYER[q.y * 4 + q.x] + 0.5) / 16.0 - 0.5;
+    col = floor(clamp(col, 0.0, 1.0) * 31.0 + 0.5 + b) / 31.0;
+  }
   frag = vec4(col, uTint.a);
 }`;
 
@@ -114,14 +131,7 @@ export class Renderer {
     let t = this.texCache.get(name);
     if (!t) {
       const img = this.assets.textures[name];
-      t = img ? texFromImage(img, { nearest: true, repeat: true, mips: !name.startsWith('bake_') }) : this.white;
-      if (img && name.startsWith('bake_')) {
-        // baked concept atlases: linear min filtering keeps the painted detail clean at a distance
-        gl.bindTexture(gl.TEXTURE_2D, t);
-        gl.generateMipmap(gl.TEXTURE_2D);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      }
+      t = img ? texFromImage(img, { nearest: true, repeat: !name.startsWith('bake_'), mips: false }) : this.white;
       this.texCache.set(name, t);
     }
     return t;
@@ -143,6 +153,10 @@ export class Renderer {
     gl.uniform1f(p.u('uFogOn'), scene.fog === false ? 0 : 1);
     gl.uniform1f(p.u('uTime'), scene.time || 0);
     gl.uniform1f(p.u('uBands'), scene.bands ?? 10);
+    const ps1 = scene.ps1 || null;
+    gl.uniform2fv(p.u('uSnap'), ps1 ? ps1.snap : [0, 0]);
+    gl.uniform1f(p.u('uAffine'), ps1 ? ps1.affine : 0);
+    gl.uniform1f(p.u('uDither'), ps1 ? ps1.dither : 0);
     const L = (scene.lights || []).slice(0, 16);
     const pos = new Float32Array(64), col = new Float32Array(64);
     L.forEach((l, i) => {
