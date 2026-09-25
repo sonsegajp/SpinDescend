@@ -1,7 +1,7 @@
 // assets.js - loads every model, texture, card, icon and UI image the game uses.
-import { parseSDM, Model } from './gl.js?v=20260925190201';
-import { parseSDA } from './anim.js?v=20260925190201';
-import { CARDS, SYMBOLS, CARD_ICON } from './data.js?v=20260925190201';
+import { parseSDM, Model } from './gl.js?v=20260925190902';
+import { parseSDA } from './anim.js?v=20260925190902';
+import { CARDS, SYMBOLS, CARD_ICON } from './data.js?v=20260925190902';
 
 export const BASE = (window.SD_ASSETS || '../assets/');
 // local dev: never trust the HTTP cache (assets are re-exported from Blender constantly)
@@ -9,10 +9,10 @@ const DEV = ['localhost', '127.0.0.1'].includes(location.hostname);
 const V = DEV ? '?v=' + Date.now() : (window.SD_BUILD ? '?v=' + window.SD_BUILD : '');
 
 export const ANIMATED = ['knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mimic',
-  'wailer', 'tusker', 'duskwing', 'warden', 'wickling', 'murk', 'jester'];
+  'wailer', 'tusker', 'duskwing', 'warden', 'wickling', 'murk', 'jester', 'merchant'];
 
 export const MODELS = [
-  'knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mimic', 'wailer', 'tusker', 'duskwing', 'warden', 'wickling', 'murk', 'jester',
+  'knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mimic', 'wailer', 'tusker', 'duskwing', 'warden', 'wickling', 'murk', 'jester', 'merchant',
   'slot_machine', 'card',
   'dun_wall0', 'dun_wall1', 'dun_wall2', 'dun_wall3', 'dun_floor0', 'dun_floor1', 'dun_floor2', 'dun_ceil', 'dun_pillar',
   'torch', 'banner', 'banner_blue', 'stairs', 'barrel', 'cobweb', 'chains', 'bones',

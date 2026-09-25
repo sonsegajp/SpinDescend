@@ -1,17 +1,17 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260925190201';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925190201';
-import { Renderer, invert } from './render.js?v=20260925190201';
-import { SlotMachine } from './slot.js?v=20260925190201';
-import { CardView } from './cards.js?v=20260925190201';
-import { UI, SERIF } from './ui.js?v=20260925190201';
-import { Animator } from './anim.js?v=20260925190201';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260925190201';
-import { is } from './input.js?v=20260925190201';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260925190201';
+import { gl } from './gl.js?v=20260925190902';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925190902';
+import { Renderer, invert } from './render.js?v=20260925190902';
+import { SlotMachine } from './slot.js?v=20260925190902';
+import { CardView } from './cards.js?v=20260925190902';
+import { UI, SERIF } from './ui.js?v=20260925190902';
+import { Animator } from './anim.js?v=20260925190902';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260925190902';
+import { is } from './input.js?v=20260925190902';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260925190902';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, KNIGHT_BAG, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925190201';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925190902';
 
 const EYE = 0.84, BACK = 0.8, PITCH = -0.19, FOV = 58 * Math.PI / 180;
 const ENEMY_SCALE = 1.18;
@@ -174,7 +174,7 @@ export class Game {
       return ent;
     }
     const ent = { ...e, open: 0, opened: false };
-    if (e.type === 'merchant') ent.animator = this.makeAnimator('goblin');
+    if (e.type === 'merchant') ent.animator = this.makeAnimator('merchant');
     return ent;
   }
 
@@ -1522,21 +1522,50 @@ export class Game {
     this.R.drawModel(model, m, { pose: { lid: { rx: lid } }, tint: c.opened ? [1.2, 1.1, 0.9] : [1, 1, 1] });
   }
 
+  // the merchant's pipe: smoke puffs, the odd ember and a smoke ring, drawn on the overlay at the
+  // projected bowl (model-space bowl = Blender (0.13, -0.385, 0.575) x 0.78, in GL axes)
+  merchantSmoke(m, now) {
+    const [px, py, pz] = xform(m, 0.1014, 0.4485, 0.3003);
+    const [sx, sy, w] = this.project(px, py, pz);
+    if (!(w > 0.3) || w > 7 || sx < -20 || sx > this.W + 20 || sy < -20 || sy > this.H + 20) return;
+    const k = Math.min(2.2, Math.max(0.35, 2.6 / w));
+    if (now - (this.smokeT || 0) > 0.12) {
+      this.smokeT = now;
+      this.fx.burst(sx, sy, { n: 1, speed: [6 * k, 14 * k], dir: -Math.PI / 2 - 0.25, spread: 0.35, life: [1.4, 2.2],
+                              size: [2.2 * k, 3.2 * k], grow: 2.6, shape: 'smoke', col: ['#d8d4d8', '#c4c0c8', '#e8e4e8'],
+                              g: -8 * k, drag: 0.6, alpha: 0.5 });
+      if (Math.random() < 0.25) {
+        this.fx.burst(sx, sy, { n: 1, speed: [8 * k, 20 * k], dir: -Math.PI / 2, spread: 0.6, life: [0.4, 0.8],
+                                size: [0.8 * k, 1.2 * k], col: ['#ffb040', '#ff7a20'], add: true, g: -30 * k });
+      }
+    }
+    if (now - (this.ringT || 0) > 2.6) {
+      this.ringT = now;
+      this.fx.burst(sx, sy - 4 * k, { n: 1, speed: [10 * k, 12 * k], dir: -Math.PI / 2, spread: 0.05, life: [1.6, 1.8],
+                                      size: [1.5 * k, 1.5 * k], grow: 3.2, shape: 'ring', col: '#e0dce4', w: 1.2, drag: 0.4,
+                                      alpha: 0.7 });
+    }
+  }
+
   drawMerchant(mc, now) {
-    const gob = this.a.models.goblin;
+    const gob = this.a.models.merchant;
     const yaw = Math.atan2(this.cam.x - mc.x * CELL, this.cam.z - mc.y * CELL);
     const mats = mc.animator ? mc.animator.matrices() : null;
     if (mc.wayside) {
       const bx = mc.x * CELL + DX[mc.side] * 0.6, bz = mc.y * CELL + DY[mc.side] * 0.6;
       const ax = DX[(mc.side + 1) % 4], az = DY[(mc.side + 1) % 4];         // along the wall
       const gy = Math.atan2(this.cam.x - bx, this.cam.z - bz);
-      this.R.drawModel(gob, trs(bx, 0, bz, gy, 0, 0, ENEMY_SCALE * 0.95), { mats, hide: new Set(['weapon']), tint: [0.92, 1.05, 0.95] });
+      const m = trs(bx, 0, bz, gy, 0, 0, ENEMY_SCALE * 0.95);
+      this.R.drawModel(gob, m, { mats, hide: new Set(['weapon']) });
+      this.merchantSmoke(m, now);
       const cx = bx + ax * 0.62 + DX[mc.side] * 0.08, cz = bz + az * 0.62 + DY[mc.side] * 0.08;
       this.R.drawModel(this.a.models.crate, trs(cx, 0, cz, gy, 0, 0, 0.8));
       this.R.drawModel(this.a.models.lantern, trs(cx, -1.62, cz, 0, 0, 0, 1));
       return;
     }
-    this.R.drawModel(gob, trs(mc.x * CELL, 0, mc.y * CELL, yaw, 0, 0, ENEMY_SCALE * 0.95), { mats, hide: new Set(['weapon']), tint: [0.92, 1.05, 0.95] });
+    const m = trs(mc.x * CELL, 0, mc.y * CELL, yaw, 0, 0, ENEMY_SCALE * 0.95);
+    this.R.drawModel(gob, m, { mats, hide: new Set(['weapon']) });
+    this.merchantSmoke(m, now);
     const fx = Math.sin(yaw), fz = Math.cos(yaw);
     this.R.drawModel(this.a.models.crate, trs(mc.x * CELL + fx * 0.62 - fz * 0.35, 0, mc.y * CELL + fz * 0.62 + fx * 0.35, yaw, 0, 0, 0.8));
     this.R.drawModel(this.a.models.lantern, trs(mc.x * CELL + fx * 0.62 - fz * 0.35, -1.62, mc.y * CELL + fz * 0.62 + fx * 0.35, 0, 0, 0, 1));
