@@ -393,7 +393,7 @@ export const RECIPES = {
       } else S.play('scythe');
     },
   }),
-  master_sword: blade({
+  dawnblade: blade({
     col: C.holy, head: { r: 9, col: 'rgba(140,210,255,0.7)' },
     hit(fx, x, y, S, I) {
       SLASHES(fx, x, y, 2, C.holy, 34, 4);
@@ -403,7 +403,7 @@ export const RECIPES = {
     },
     launchSfx: 'whoosh',
   }),
-  buster: blade({
+  slabcleaver: blade({
     spin: 8, arc: 24, scale: 1.5, travel: 0.3,
     hit(fx, x, y, S, I) {
       if (I.limit) {
@@ -419,7 +419,7 @@ export const RECIPES = {
       }
     },
   }),
-  dragonslayer: blade({
+  wyrmbreaker: blade({
     spin: 6, arc: 60, scale: 1.7, travel: 0.36, ease: k => k * k,
     trail: { shape: 'px', col: ['#3a3438', '#5a4c50'], speed: [0, 10], life: [0.3, 0.5], size: [2, 3] },
     hit(fx, x, y, S, I) {
@@ -430,17 +430,18 @@ export const RECIPES = {
       S.shake(1.6); S.play('slab');
     },
   }),
-  keyblade: blade({
+  picklock: blade({
     spin: 18, arc: 34, col: C.gold, head: { r: 8, col: 'rgba(255,230,120,0.6)' },
     trail: { shape: 'star', col: ['#fff6c0', '#ffe84a', '#fff'], speed: [4, 20], life: [0.3, 0.5], size: [1, 2], add: true }, rate: 50,
     hit(fx, x, y, S, I) {
       SLASHES(fx, x, y, 1, C.gold, 30, 4);
-      fx.burst(x, y, { n: 10, speed: [30, 90], life: [0.6, 1.0], size: [2, 3.5], shape: 'heart', col: ['#ff6a8a', '#ffd24a'], g: -40 });
+      fx.burst(x, y, { n: 12, speed: [60, 160], life: [0.3, 0.6], size: [1.5, 2.5], shape: 'shard', col: ['#ffd24a', '#fff6c0', '#c89a30'], add: true, drag: 2 });  // tumblers
+      fx.ring(x, y, 3, 16, 0.2, '#ffe070', 2);
       stars(fx, x, y, ['#fff6c0', '#ffe84a'], 10);
-      S.play('keyblade');
+      S.play('picklock');
     },
   }),
-  masamune: {
+  whisperblade: {
     target: 'enemy', travel: 0.14,
     launch(fx, a, b, S) {
       S.play('whoosh');
@@ -453,17 +454,17 @@ export const RECIPES = {
         sparks(fx, x, y, C.silver, 8, [120, 240]);
         S.play('shing');
       }, i * 90);
-      fx.burst(x, y, { n: 14, speed: [20, 70], life: [0.9, 1.5], size: [1.5, 2.5], shape: 'petal', col: ['#ffd8e8', '#ffffff', '#ffb0c8'], g: 40, spin: 2 });
+      fx.burst(x, y, { n: 16, speed: [40, 110], life: [0.9, 1.5], size: [1.5, 2.5], shape: 'leaf', col: ['#c8f0d8', '#8ad8b0', '#ffffff'], g: 20, spin: 3, drag: 1.5 });  // a gust of leaves
     },
   },
-  gunblade: blade({
+  powder_saber: blade({
     hit(fx, x, y, S, I) {
       SLASHES(fx, x, y, 1, C.steel, 32, 4);
       if (I.trigger) {
         fx.glow(x, y, 22, 0.18, 'rgba(255,220,120,1)', 1.3);
         fx.burst(x, y, { n: 18, speed: [120, 300], life: [0.15, 0.3], shape: 'spark', col: ['#fff', '#ffe08a'], add: true, len: 0.04 });
         puff(fx, x, y, C.smoke, 10);
-        S.shake(0.6); S.play('gunblade');
+        S.shake(0.6); S.play('powder');
       } else { sparks(fx, x, y, C.steel, 14); S.play('slash2'); }
     },
   }),
@@ -537,11 +538,12 @@ Object.assign(RECIPES, {
                  hit(fx, x, y, S) { shieldPop(fx, x, y, C.blue, 0); S.play('shieldup'); } }),
   shield2: toHp({ trail: { col: C.blue, speed: [3, 12], life: [0.2, 0.3], size: [1, 2], add: true },
                   hit(fx, x, y, S) { shieldPop(fx, x, y, C.blue, 1); stars(fx, x, y, C.gold, 6); S.play('shieldup2'); } }),
-  hylian: toHp({ trail: { shape: 'star', col: ['#fff6c0', '#8ad8ff'], speed: [3, 12], life: [0.2, 0.4], size: [1, 2], add: true },
+  bulwark: toHp({ trail: { shape: 'star', col: ['#fff6c0', '#8ad8ff'], speed: [3, 12], life: [0.2, 0.4], size: [1, 2], add: true },
                  hit(fx, x, y, S) {
                    shieldPop(fx, x, y, C.blue, 2);
-                   for (let i = 0; i < 3; i++) fx.burst(x + [-8, 8, 0][i], y + [4, 4, -10][i], { n: 1, speed: [0, 1], life: [0.8, 0.8], size: [5, 5], shape: 'shard', col: '#ffe84a', add: true, spin: 0 });
-                   S.play('hylian');
+                   fx.ring(x, y, 10, 44, 0.5, '#d8b060', 4);
+                   stars(fx, x, y, ['#fff6c0', '#d8b060'], 10);
+                   S.play('bulwark');
                  } }),
   potion: toHp({ trail: { shape: 'bubble', col: C.blood, speed: [3, 12], life: [0.25, 0.4], size: [1, 2] },
                  hit(fx, x, y, S) { HEAL(fx, x, y, 10); fx.burst(x, y, { n: 8, speed: [20, 60], life: [0.5, 0.9], size: [1.5, 2.5], shape: 'bubble', col: C.blood, g: -60 }); S.play('potion'); } }),
@@ -549,11 +551,11 @@ Object.assign(RECIPES, {
                   hit(fx, x, y, S) { HEAL(fx, x, y, 16); fx.burst(x, y, { n: 12, speed: [20, 70], life: [0.5, 1.0], size: [1.5, 3], shape: 'bubble', col: C.blood, g: -60 }); S.play('potion'); } }),
   potion3: toHp({ trail: { shape: 'heart', col: C.blood, speed: [3, 12], life: [0.3, 0.5], size: [2, 3] },
                   hit(fx, x, y, S) { HEAL(fx, x, y, 26); fx.burst(x, y, { n: 10, speed: [30, 90], life: [0.8, 1.3], size: [3, 4.5], shape: 'heart', col: C.blood, g: -50 }); fx.ring(x, y, 5, 40, 0.5, '#8aff9a', 3); S.play('bigheal'); } }),
-  estus: toHp({ trail: { col: C.orange, speed: [5, 25], life: [0.3, 0.5], size: [1.5, 3], add: true, g: -60 },
+  ember_flask: toHp({ trail: { col: C.orange, speed: [5, 25], life: [0.3, 0.5], size: [1.5, 3], add: true, g: -60 },
                 hit(fx, x, y, S) {
                   fx.glow(x, y, 30, 0.6, 'rgba(255,160,60,0.9)', 1.4);
                   fx.burst(x, y, { n: 26, speed: [20, 80], life: [0.7, 1.3], size: [1.5, 3], col: C.orange, add: true, g: -90, jx: 14 });
-                  HEAL(fx, x, y, 12, ['#fff0c0', '#ffc86a']); S.play('estus');
+                  HEAL(fx, x, y, 12, ['#fff0c0', '#ffc86a']); S.play('emberflask');
                 } }),
   charm: toHp({ trail: { shape: 'heart', col: C.pink, speed: [3, 12], life: [0.3, 0.5], size: [1.5, 2.5] },
                 hit(fx, x, y, S) { fx.burst(x, y, { n: 14, speed: [20, 80], life: [0.7, 1.2], size: [2, 3.5], shape: 'heart', col: C.pink, g: -50 }); stars(fx, x, y, C.pink, 8); S.play('charm'); } }),
@@ -661,11 +663,11 @@ export const EVENTS = {
     fx.bolt(x0, y0, x1, y1, 0.4, col, 2);
     for (let i = 0; i < 40; i++) fx.burst((x0 + x1) / 2 + R(-120, 120), y0 - 60, { n: 1, speed: [20, 80], life: [1.2, 1.8], size: [2, 3], shape: 'shard', col: C.rainbow, g: 160, spin: 3, dir: -Math.PI / 2, spread: 1.2 });
   },
-  fairy(fx, x, y, S) {
+  pixie(fx, x, y, S) {
     for (let i = 0; i < 12; i++) fx.shot({ from: [x + R(-60, 60), y - R(40, 90)], to: [x + R(-6, 6), y], dur: R(0.4, 0.8), arc: R(-20, 20),
                                             head: { r: 4, col: 'rgba(255,170,240,0.9)', core: '#ffffff' }, trail: { shape: 'star', col: C.pink, speed: [0, 5], life: [0.2, 0.35], size: [1, 1.5], add: true } });
     HEAL(fx, x, y, 20, C.pink);
-    S.play('fairy');
+    S.play('pixie');
   },
   // taking a card: a burst in its rarity colour, bigger and louder up the rarity ladder
   card(fx, x, y, S, col, tier) {
@@ -682,11 +684,11 @@ export const EVENTS = {
     if (tier >= 4) for (let i = 0; i < 8; i++) fx.bolt(x, y, x + Math.cos(i * 0.785) * 140, y + Math.sin(i * 0.785) * 90, 0.4, col, 2);
     S.play(['pick', 'pick', 'rare_pick', 'epic_pick', 'legend_pick'][tier]);
   },
-  phoenix(fx, x, y, S) {
+  rebirth(fx, x, y, S) {
     fx.flash('#ff8a3a', 0.5, 0.6);
     fx.glow(x, y, 50, 0.9, 'rgba(255,150,60,1)', 1.5);
     fx.burst(x, y, { n: 40, speed: [30, 160], life: [0.8, 1.5], size: [2, 4], shape: 'feather', col: C.fire, add: true, g: -80, spin: 2 });
     embers(fx, x, y, C.fire, 30, 1.5);
-    S.play('phoenix');
+    S.play('rebirth');
   },
 };

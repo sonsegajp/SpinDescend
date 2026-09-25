@@ -1,17 +1,17 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260925180707';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925180707';
-import { Renderer, invert } from './render.js?v=20260925180707';
-import { SlotMachine } from './slot.js?v=20260925180707';
-import { CardView } from './cards.js?v=20260925180707';
-import { UI, SERIF } from './ui.js?v=20260925180707';
-import { Animator } from './anim.js?v=20260925180707';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260925180707';
-import { is } from './input.js?v=20260925180707';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260925180707';
+import { gl } from './gl.js?v=20260925190201';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925190201';
+import { Renderer, invert } from './render.js?v=20260925190201';
+import { SlotMachine } from './slot.js?v=20260925190201';
+import { CardView } from './cards.js?v=20260925190201';
+import { UI, SERIF } from './ui.js?v=20260925190201';
+import { Animator } from './anim.js?v=20260925190201';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260925190201';
+import { is } from './input.js?v=20260925190201';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260925190201';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, KNIGHT_BAG, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925180707';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925190201';
 
 const EYE = 0.84, BACK = 0.8, PITCH = -0.19, FOV = 58 * Math.PI / 180;
 const ENEMY_SCALE = 1.18;
@@ -582,7 +582,7 @@ export class Game {
       keys--;
       this.slot.setStatic(C.grid);
       const [x, y] = this.slot.reelAnchor(c, r);
-      this.ui.float('Unlocked!', x, y - 8, '#ffe070', this.time, { size: 13 });
+      this.ui.float('Picked!', x, y - 8, '#ffe070', this.time, { size: 13 });
       this.audio.play('luck');
     }
     for (const b of this.findBonuses(C.grid).sort((a, b) => hits(a) - hits(b))) C.queue.push(b);
@@ -826,12 +826,12 @@ export class Game {
     } else if (s.dmg && e.alive) {
       let dmg = (s.dmgRoll ? s.dmgRoll[0] + Math.floor(Math.random() * (s.dmgRoll[1] - s.dmgRoll[0] + 1)) : s.dmg) + P.might;
       if (s.phalanx) dmg += C.grid.flat().filter(x => x === id).length - 1;
-      if (s.beam && P.hp >= P.maxHp) { dmg += s.beam; I.beam = true; this.ui.float('Sword beam!', ax, ay - 30, '#a8e8ff', this.time, { size: 13 }); }
-      if (s.trigger && Math.random() < s.trigger) { dmg += 3; I.trigger = true; this.ui.float('Trigger!', ax, ay - 30, '#ffd24a', this.time, { size: 13 }); }
-      if ((s.aoe || s.burn) && P.relics.has('fire_materia')) dmg += 2;
+      if (s.beam && P.hp >= P.maxHp) { dmg += s.beam; I.beam = true; this.ui.float('Dawnlight!', ax, ay - 30, '#a8e8ff', this.time, { size: 13 }); }
+      if (s.trigger && Math.random() < s.trigger) { dmg += 3; I.trigger = true; this.ui.float('BANG!', ax, ay - 30, '#ffd24a', this.time, { size: 13 }); }
+      if ((s.aoe || s.burn) && P.relics.has('ember_core')) dmg += 2;
       let limit = false;
       if (s.limit) { P.limitCount = (P.limitCount || 0) + 1; limit = P.limitCount % s.limit === 0; }
-      if (limit) { dmg *= 3; I.limit = true; this.ui.float('LIMIT BREAK!', ax, ay - 34, '#ff7a3a', this.time, { size: 15 }); }
+      if (limit) { dmg *= 3; I.limit = true; this.ui.float('OVERDRIVE!', ax, ay - 34, '#ff7a3a', this.time, { size: 15 }); }
       if (s.aoe) { dmg += 2 * P.blast; if (C.chain) dmg *= 2; }
       let crit = false;
       if (C.frenzy || (s.crit && Math.random() < s.crit) || (s.opener && e.hp >= e.maxHp)) { dmg *= 2; crit = true; }
@@ -884,9 +884,9 @@ export class Game {
       C.loot++;
       this.ui.float(C.loot >= 2 ? 'Loot!' : 'Treasure', ax, ay - 24 + oy, '#ffd24a', this.time, { size: 12 });
     }
-    if (s.self && P.relics.has('brand') && e.alive) {
+    if (s.self && P.relics.has('blood_pact') && e.alive) {
       const [x, y] = this.enemyScreen(0.8);
-      this.ui.float('Brand!', x, y - 20, '#ff3a3a', this.time, { size: 13 });
+      this.ui.float('Blood Pact!', x, y - 20, '#ff3a3a', this.time, { size: 13 });
       this.damageEnemy(3, false);
     }
     if (s.self) {
@@ -917,23 +917,23 @@ export class Game {
     if (P.hp <= 0 && !this.rescue()) this.playerDies();
   }
 
-  // Fairy in a Bottle / Phoenix Down: one-shot saves (return true if the player lives on)
+  // Pixie in a Jar / Ashen Plume: one-shot saves (return true if the player lives on)
   rescue() {
     const P = this.player;
-    if (P.hp <= 5 && P.relics.has('fairy_bottle')) {
-      P.relics.delete('fairy_bottle');
+    if (P.hp <= 5 && P.relics.has('pixie_jar')) {
+      P.relics.delete('pixie_jar');
       P.hp = Math.min(P.maxHp, Math.max(P.hp, 0) + 10);
       this.slot.state.hp = P.hp;
-      this.ui.toast('A fairy flies out of the bottle! +10 HP', this.time, '#ffb0f0', 2.6);
-      this.fxEvent('fairy', ...this.slot.hpAnchor());
+      this.ui.toast('The pixie bursts out of the jar! +10 HP', this.time, '#ffb0f0', 2.6);
+      this.fxEvent('pixie', ...this.slot.hpAnchor());
       return true;
     }
-    if (P.hp <= 0 && P.relics.has('phoenix_down')) {
-      P.relics.delete('phoenix_down');
+    if (P.hp <= 0 && P.relics.has('ashen_plume')) {
+      P.relics.delete('ashen_plume');
       P.hp = Math.ceil(P.maxHp / 2);
       this.slot.state.hp = P.hp;
-      this.ui.toast('The Phoenix Down flares - you rise again!', this.time, '#ffb060', 2.6);
-      this.fxEvent('phoenix', ...this.slot.hpAnchor());
+      this.ui.toast('The Ashen Plume flares - you rise from the ashes!', this.time, '#ffb060', 2.6);
+      this.fxEvent('rebirth', ...this.slot.hpAnchor());
       return true;
     }
     return P.hp > 0;
@@ -1184,13 +1184,13 @@ export class Game {
     } else if (c.type === 'passive') {
       P.relics.add(c.relic);
       if (c.relic === 'horseshoe') P.luck = Math.round((P.luck + 0.1) * 100) / 100;
-      if (c.relic === 'triforce') { P.might++; P.guard++; P.luck = Math.round((P.luck + 0.15) * 100) / 100; }
+      if (c.relic === 'trinity_sigil') { P.might++; P.guard++; P.luck = Math.round((P.luck + 0.15) * 100) / 100; }
     } else if (c.type === 'boost') {
       if (c.stat === 'maxHp') { P.maxHp += c.amount; this.slot.state.maxHp = P.maxHp; this.heal(c.amount, 0, 0); }
-      else if (c.stat === 'eclipse') {
+      else if (c.stat === 'hunger') {
         P.might += 3; P.maxHp = Math.max(5, P.maxHp - 8); P.hp = Math.min(P.hp, P.maxHp);
         this.slot.state.maxHp = P.maxHp; this.slot.state.hp = P.hp;
-      } else if (c.stat === 'paopu') { P.maxHp += 4; this.slot.state.maxHp = P.maxHp; this.heal(P.maxHp, 0, 0); }
+      } else if (c.stat === 'heartfruit') { P.maxHp += 4; this.slot.state.maxHp = P.maxHp; this.heal(P.maxHp, 0, 0); }
       else P[c.stat] += c.amount;
     } else if (c.type === 'purge') {
       const i = P.bag.indexOf('skull');
