@@ -9,10 +9,10 @@ const DEV = ['localhost', '127.0.0.1'].includes(location.hostname);
 const V = DEV ? '?v=' + Date.now() : '';
 
 export const ANIMATED = ['knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mimic',
-  'redead', 'moblin', 'keese', 'darknut', 'tonberry', 'shadow'];
+  'redead', 'moblin', 'keese', 'darknut', 'tonberry', 'shadow', 'soldier'];
 
 export const MODELS = [
-  'knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mimic', 'redead', 'moblin', 'keese', 'darknut', 'tonberry', 'shadow',
+  'knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mimic', 'redead', 'moblin', 'keese', 'darknut', 'tonberry', 'shadow', 'soldier',
   'slot_machine', 'card',
   'dun_wall0', 'dun_wall1', 'dun_wall2', 'dun_wall3', 'dun_floor0', 'dun_floor1', 'dun_floor2', 'dun_ceil', 'dun_pillar',
   'torch', 'banner', 'banner_blue', 'stairs', 'barrel', 'cobweb', 'chains', 'bones',

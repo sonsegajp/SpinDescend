@@ -213,6 +213,7 @@ export const ENEMIES = {
   darknut:  { name: 'Darknut',  model: 'darknut',  hp: 18, atk: 3, armor: 2, gold: [7, 11], note: 'Heavy armour blocks 2 damage.' },
   tonberry: { name: 'Tonberry', model: 'tonberry', hp: 12, atk: 1, grudge: 1, gold: [5, 9], note: 'Its knife grows sharper every turn.' },
   shadow:   { name: 'Shadow',   model: 'shadow',   hp: 7,  atk: 2, dodge: 0.25, gold: [2, 5], note: 'Sinks into the floor to dodge.' },
+  soldier:  { name: 'Soldier',  model: 'soldier',  hp: 10, atk: 2, charge: 3, gold: [3, 6], note: 'Spin-kicks for double damage every third turn.' },
 };
 
 // stair guards (elites) per biome
@@ -222,12 +223,12 @@ export const ELITES = { dungeon: ['goblin', 'skeleton', 'redead'], mines: ['mobl
 
 export const BIOMES = {
   dungeon: {
-    name: 'Dungeon', floors: [1, 2], enemies: ['goblin', 'goblin', 'skeleton', 'slime', 'cultist', 'keese', 'keese', 'redead'],
+    name: 'Dungeon', floors: [1, 2], enemies: ['goblin', 'goblin', 'skeleton', 'slime', 'cultist', 'keese', 'keese', 'soldier', 'shadow'],
     fog: [0.03, 0.032, 0.05], fogRange: [3.0, 15.0], ambient: [0.2, 0.22, 0.3],
     torch: [1.55, 1.0, 0.55], torchRadius: 6.2, lanternOnPlayer: [0.42, 0.36, 0.3],
   },
   mines: {
-    name: 'Mines', floors: [3, 4], enemies: ['skeleton', 'goblin', 'slime', 'moblin', 'moblin', 'keese', 'tonberry', 'cultist'],
+    name: 'Mines', floors: [3, 4], enemies: ['skeleton', 'goblin', 'slime', 'moblin', 'moblin', 'keese', 'tonberry', 'soldier'],
     fog: [0.05, 0.036, 0.026], fogRange: [3.0, 14.0], ambient: [0.26, 0.21, 0.17],
     torch: [2.0, 1.2, 0.45], torchRadius: 7.0, lanternOnPlayer: [0.42, 0.34, 0.24],
   },
@@ -247,7 +248,7 @@ export const BIOMES = {
     torch: [2.3, 1.05, 0.36], torchRadius: 6.5, lanternOnPlayer: [0.35, 0.24, 0.18],
   },
   ruins: {
-    name: 'Ruins', floors: [11, 12], enemies: ['cultist', 'skeleton', 'darknut', 'redead', 'shadow', 'shadow', 'moblin', 'goblin'],
+    name: 'Ruins', floors: [11, 12], enemies: ['cultist', 'skeleton', 'darknut', 'redead', 'shadow', 'soldier', 'soldier', 'moblin'],
     fog: [0.42, 0.5, 0.62], fogRange: [8.0, 46.0], ambient: [0.42, 0.47, 0.54],
     sun: { dir: [0.45, -0.75, 0.35], col: [0.72, 0.74, 0.8] }, sky: true,
     torch: [1.6, 1.2, 0.7], torchRadius: 5.0, lanternOnPlayer: [0.12, 0.12, 0.12],

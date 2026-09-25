@@ -58,6 +58,12 @@ export class Game {
     if (q.has('combat')) {
       const e = this.entities.find(x => x.type === 'enemy' && (!q.get('combat') || x.kind === q.get('combat'))) ||
                 this.entities.find(x => x.type === 'enemy');
+      const want = q.get('combat');
+      if (e && want && e.kind !== want && ENEMIES[want]) {          // force the kind (viewer for any enemy)
+        const hp = Math.round(e.hp / e.def.hp * ENEMIES[want].hp);
+        Object.assign(e, { kind: want, def: ENEMIES[want], hp, maxHp: hp, atk: ENEMIES[want].atk,
+                          animator: this.makeAnimator(ENEMIES[want].model) });
+      }
       if (e) this.teleportNextTo(e);
       if (e) this.startCombat(e);
       if (q.get('grid')) this.forceGrid = q.get('grid').split(',');
