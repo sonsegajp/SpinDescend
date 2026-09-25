@@ -4,7 +4,7 @@
 // Directions: 0 = north (-Z), 1 = east (+X), 2 = south (+Z), 3 = west (-X).
 import { rng, trs } from './math.js';
 import { Batcher } from './gl.js';
-import { BIOMES, biomeForFloor } from './data.js';
+import { BIOMES, ELITES, biomeForFloor } from './data.js';
 
 export const CELL = 2.0;
 export const WALL_H = 2.6;
@@ -99,7 +99,7 @@ export function generate(floor, seed) {
       if (!guard || dist[ny * W + nx] < dist[guard[1] * W + guard[0]]) guard = [nx, ny];
     }
     if (guard) {
-      entities.push({ type: 'enemy', kind: R.pick(['goblin', 'skeleton', 'cultist']), x: guard[0], y: guard[1], elite: true });
+      entities.push({ type: 'enemy', kind: R.pick(ELITES[biome]), x: guard[0], y: guard[1], elite: true });
       occupied.add(key(...guard));
     }
   }

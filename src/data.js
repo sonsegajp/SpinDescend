@@ -47,14 +47,24 @@ export const SYMBOLS = {
   scythe:       { name: "Reaper's Scythe",  icon: 'scythe',       rarity: 'epic',      dmg: 2, execute: 0.25,  desc: 'Deal 2 damage. Reaps any foe left below 25% HP.' },
   spiked:       { name: 'Spiked Shield',    icon: 'spiked',       rarity: 'uncommon',  armor: 1, dmg: 1,       desc: 'Gain 1 Armor and deal 1 damage.' },
   potion3:      { name: 'Greater Potion',   icon: 'potion3',      rarity: 'rare',      heal: 4,                desc: 'Restore 4 HP.' },
+  // legendary blades from other worlds
+  master_sword: { name: 'Master Sword',     icon: 'master_sword', rarity: 'legendary', dmg: 3, beam: 3,        desc: 'Deal 3 damage. At full HP it fires a sword beam: +3 damage.' },
+  buster:       { name: 'Buster Sword',     icon: 'buster',       rarity: 'epic',      dmg: 4, limit: 4,       desc: 'Deal 4 damage. Every 4th swing is a Limit Break: triple damage.' },
+  dragonslayer: { name: 'Dragonslayer',     icon: 'dragonslayer', rarity: 'legendary', dmg: 6, pierce: 1,      desc: 'Deal 6 damage, cleaving through block. Too big to be called a sword.' },
+  keyblade:     { name: 'Keyblade',         icon: 'keyblade',     rarity: 'epic',      dmg: 2, unlock: 1,      desc: 'Deal 2 damage. Unlocks a Curse on the reels into Gold.' },
+  masamune:     { name: 'Masamune',         icon: 'masamune',     rarity: 'legendary', dmg: 2, hits: 3,        desc: 'Deal 2 damage three times.' },
+  gunblade:     { name: 'Gunblade',         icon: 'gunblade',     rarity: 'rare',      dmg: 3, trigger: 0.35,  desc: 'Deal 3 damage. 35% chance to pull the trigger: +3.' },
+  hylian:       { name: 'Hylian Shield',    icon: 'hylian',       rarity: 'rare',      armor: 3,               desc: 'Gain 3 Armor.' },
+  estus:        { name: 'Estus Flask',      icon: 'estus',        rarity: 'rare',      heal: 5,                desc: 'Restore 5 HP.' },
 };
 
 // Paytable families: upgraded symbols count as their base symbol.
 export const FAMILY = {
   sword: 'blade', sword2: 'blade', sword3: 'blade', sword4: 'blade', dagger: 'blade',
   spear: 'blade', axe: 'blade', knives: 'blade', hammer: 'blade', crossbow: 'blade', flail: 'blade', flame: 'blade', scythe: 'blade',
-  shield: 'shield', shield2: 'shield', spiked: 'shield',
-  potion: 'potion', potion2: 'potion', potion3: 'potion', vial: 'potion',
+  master_sword: 'blade', buster: 'blade', dragonslayer: 'blade', keyblade: 'blade', masamune: 'blade', gunblade: 'blade',
+  shield: 'shield', shield2: 'shield', spiked: 'shield', hylian: 'shield',
+  potion: 'potion', potion2: 'potion', potion3: 'potion', vial: 'potion', estus: 'potion',
   coin: 'coin', coin_copper: 'coin', coins: 'coin', coin_silver: 'coin', coin_gold: 'coin', coin_royal: 'coin',
   chest: 'chest', mimic: 'chest',
   clover: 'clover', charm: 'clover',
@@ -154,11 +164,35 @@ export const CARDS = {
                       desc: '+1 Might: every hit deals +1.' },
   holy_water:       { name: 'Holy Water',       rarity: 'common',    type: 'purge',
                       desc: 'Remove a Curse from your reels.' },
+  // relics of other adventures
+  master_sword:     { name: 'Master Sword',     rarity: 'legendary', type: 'add',     sym: 'master_sword' },
+  buster_sword:     { name: 'Buster Sword',     rarity: 'epic',      type: 'add',     sym: 'buster' },
+  dragonslayer:     { name: 'Dragonslayer',     rarity: 'legendary', type: 'add',     sym: 'dragonslayer' },
+  keyblade:         { name: 'Keyblade',         rarity: 'epic',      type: 'add',     sym: 'keyblade' },
+  masamune:         { name: 'Masamune',         rarity: 'legendary', type: 'add',     sym: 'masamune' },
+  gunblade:         { name: 'Gunblade',         rarity: 'rare',      type: 'add',     sym: 'gunblade' },
+  hylian_shield:    { name: 'Hylian Shield',    rarity: 'rare',      type: 'upgrade', from: ['shield', 'shield2'], to: 'hylian' },
+  estus_flask:      { name: 'Estus Flask',      rarity: 'rare',      type: 'upgrade', from: ['potion', 'potion2'], to: 'estus' },
+  fairy_bottle:     { name: 'Fairy in a Bottle', rarity: 'rare',     type: 'passive', relic: 'fairy_bottle',
+                      desc: 'When you drop to 5 HP or less, a fairy heals you 10. (Once)' },
+  phoenix_down:     { name: 'Phoenix Down',     rarity: 'rare',      type: 'passive', relic: 'phoenix_down',
+                      desc: 'If you fall, rise again with half your HP. (Once)' },
+  triforce:         { name: 'Triforce',         rarity: 'legendary', type: 'passive', relic: 'triforce',
+                      desc: 'Power, Wisdom, Courage: +1 Might, +15% Luck, +1 Guard.' },
+  behelit:          { name: 'Behelit',          rarity: 'epic',      type: 'boost',   stat: 'eclipse',
+                      desc: 'The Eclipse: +3 Might, but -8 Max HP.' },
+  brand:            { name: 'Brand of Sacrifice', rarity: 'epic',    type: 'passive', relic: 'brand',
+                      desc: 'Every Curse that lands also deals 3 damage to the foe.' },
+  paopu:            { name: 'Paopu Fruit',      rarity: 'uncommon',  type: 'boost',   stat: 'paopu',
+                      desc: '+4 Max HP and heal fully. Share it with someone.' },
+  fire_materia:     { name: 'Fire Materia',     rarity: 'rare',      type: 'passive', relic: 'fire_materia',
+                      desc: 'Bombs and Flame Brands deal +2 damage.' },
 };
 
 // card-face icon for cards that don't put a symbol on the reels
 export const CARD_ICON = { horseshoe: 'horseshoe', heart_container: 'heart_plus', whetstone: 'whetstone',
-  holy_water: 'holy_water', four_leaf: 'clover4' };
+  holy_water: 'holy_water', four_leaf: 'clover4', fairy_bottle: 'fairy', phoenix_down: 'phoenix', triforce: 'triforce',
+  behelit: 'behelit', brand: 'brand', paopu: 'paopu', fire_materia: 'materia' };
 
 export const CARD_PRICE = { common: 8, uncommon: 14, rare: 22, epic: 34, legendary: 50 };
 
@@ -172,21 +206,32 @@ export const ENEMIES = {
   slime:    { name: 'Slime',    model: 'slime',    hp: 6,  atk: 1, regen: 1, gold: [1, 3], note: 'Regenerates 1 HP.' },
   cultist:  { name: 'Cultist',  model: 'cultist',  hp: 8,  atk: 2, curse: 2, gold: [3, 6], note: 'Curses your reels.' },
   mimic:    { name: 'Mimic',    model: 'mimic',    hp: 12, atk: 3, gold: [8, 12], note: 'It was never a chest.' },
+  // second wave (PS1-native)
+  redead:   { name: 'ReDead',   model: 'redead',   hp: 14, atk: 2, scream: 3, gold: [4, 7], note: 'Its scream paralyzes you.' },
+  moblin:   { name: 'Moblin',   model: 'moblin',   hp: 16, atk: 3, charge: 3, gold: [5, 8], note: 'Charges every third turn.' },
+  keese:    { name: 'Keese',    model: 'keese',    hp: 4,  atk: 1, dodge: 0.3, gold: [1, 3], note: 'Flits out of the way of blows.' },
+  darknut:  { name: 'Darknut',  model: 'darknut',  hp: 18, atk: 3, armor: 2, gold: [7, 11], note: 'Heavy armour blocks 2 damage.' },
+  tonberry: { name: 'Tonberry', model: 'tonberry', hp: 12, atk: 1, grudge: 1, gold: [5, 9], note: 'Its knife grows sharper every turn.' },
+  shadow:   { name: 'Shadow',   model: 'shadow',   hp: 7,  atk: 2, dodge: 0.25, gold: [2, 5], note: 'Sinks into the floor to dodge.' },
 };
+
+// stair guards (elites) per biome
+export const ELITES = { dungeon: ['goblin', 'skeleton', 'redead'], mines: ['moblin', 'skeleton', 'tonberry'],
+  ruins: ['darknut', 'moblin', 'redead'] };
 
 export const BIOMES = {
   dungeon: {
-    name: 'Dungeon', floors: [1, 2, 3], enemies: ['goblin', 'goblin', 'skeleton', 'slime', 'cultist'],
+    name: 'Dungeon', floors: [1, 2, 3], enemies: ['goblin', 'goblin', 'skeleton', 'slime', 'cultist', 'keese', 'keese', 'redead'],
     fog: [0.03, 0.032, 0.05], fogRange: [3.0, 15.0], ambient: [0.2, 0.22, 0.3],
     torch: [1.55, 1.0, 0.55], torchRadius: 6.2, lanternOnPlayer: [0.42, 0.36, 0.3],
   },
   mines: {
-    name: 'Mines', floors: [4, 5, 6], enemies: ['skeleton', 'goblin', 'slime', 'cultist', 'skeleton'],
+    name: 'Mines', floors: [4, 5, 6], enemies: ['skeleton', 'goblin', 'slime', 'moblin', 'moblin', 'keese', 'tonberry', 'cultist'],
     fog: [0.05, 0.036, 0.026], fogRange: [3.0, 14.0], ambient: [0.26, 0.21, 0.17],
     torch: [2.0, 1.2, 0.45], torchRadius: 7.0, lanternOnPlayer: [0.42, 0.34, 0.24],
   },
   ruins: {
-    name: 'Ruins', floors: [7, 8, 9], enemies: ['cultist', 'skeleton', 'slime', 'goblin', 'cultist'],
+    name: 'Ruins', floors: [7, 8, 9], enemies: ['cultist', 'skeleton', 'darknut', 'redead', 'shadow', 'shadow', 'moblin', 'goblin'],
     fog: [0.42, 0.5, 0.62], fogRange: [8.0, 46.0], ambient: [0.42, 0.47, 0.54],
     sun: { dir: [0.45, -0.75, 0.35], col: [0.72, 0.74, 0.8] }, sky: true,
     torch: [1.6, 1.2, 0.7], torchRadius: 5.0, lanternOnPlayer: [0.12, 0.12, 0.12],
