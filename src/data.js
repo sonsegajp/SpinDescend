@@ -36,20 +36,32 @@ export const SYMBOLS = {
   dice:         { name: 'Loaded Dice',      icon: 'dice',         rarity: 'rare',      reroll: 1,              desc: 'Reroll one symbol each spin.' },
   bomb:         { name: 'Bomb',             icon: 'bomb',         rarity: 'rare',      dmg: 3, aoe: 1,         desc: 'Deal 3 damage to all enemies.' },
   dagger:       { name: 'Poison Dagger',    icon: 'dagger',       rarity: 'uncommon',  dmg: 1, poison: 1,      desc: 'Deal 1 damage. Apply 1 Poison.' },
+  // new weapons
+  spear:        { name: 'Spear',            icon: 'spear',        rarity: 'common',    dmg: 1, phalanx: 1,     desc: 'Deal 1 damage. +1 for each other Spear on the reels.' },
+  axe:          { name: 'Battle Axe',       icon: 'axe',          rarity: 'uncommon',  dmg: 2, pierce: 1,      desc: 'Deal 2 damage. Cleaves through block.' },
+  knives:       { name: 'Throwing Knives',  icon: 'knives',       rarity: 'uncommon',  dmg: 1, hits: 2,        desc: 'Deal 1 damage twice.' },
+  hammer:       { name: 'War Hammer',       icon: 'hammer',       rarity: 'rare',      dmg: 2, stun: 0.3,      desc: 'Deal 2 damage. 30% chance to stun: the foe skips its attack.' },
+  crossbow:     { name: 'Crossbow',         icon: 'crossbow',     rarity: 'rare',      dmg: 2, opener: 1,      desc: 'Deal 2 damage. Double damage to a foe at full HP.' },
+  flail:        { name: 'Morning Star',     icon: 'flail',        rarity: 'rare',      dmg: 1, dmgRoll: [1, 5], desc: 'Deal 1 to 5 damage.' },
+  flame:        { name: 'Flame Brand',      icon: 'flame',        rarity: 'epic',      dmg: 2, burn: 3,        desc: 'Deal 2 damage. Sets the foe ablaze: 2 damage a turn for 3 turns.' },
+  scythe:       { name: "Reaper's Scythe",  icon: 'scythe',       rarity: 'epic',      dmg: 2, execute: 0.25,  desc: 'Deal 2 damage. Reaps any foe left below 25% HP.' },
+  spiked:       { name: 'Spiked Shield',    icon: 'spiked',       rarity: 'uncommon',  armor: 1, dmg: 1,       desc: 'Gain 1 Armor and deal 1 damage.' },
+  potion3:      { name: 'Greater Potion',   icon: 'potion3',      rarity: 'rare',      heal: 4,                desc: 'Restore 4 HP.' },
 };
 
 // Paytable families: upgraded symbols count as their base symbol.
 export const FAMILY = {
   sword: 'blade', sword2: 'blade', sword3: 'blade', sword4: 'blade', dagger: 'blade',
-  shield: 'shield', shield2: 'shield',
-  potion: 'potion', potion2: 'potion', vial: 'potion',
+  spear: 'blade', axe: 'blade', knives: 'blade', hammer: 'blade', crossbow: 'blade', flail: 'blade', flame: 'blade', scythe: 'blade',
+  shield: 'shield', shield2: 'shield', spiked: 'shield',
+  potion: 'potion', potion2: 'potion', potion3: 'potion', vial: 'potion',
   coin: 'coin', coin_copper: 'coin', coins: 'coin', coin_silver: 'coin', coin_gold: 'coin', coin_royal: 'coin',
   chest: 'chest', mimic: 'chest',
   clover: 'clover', charm: 'clover',
   skull: 'skull', skull_cursed: 'skull',
   bomb: 'bomb', dice: 'dice',
 };
-export const FAMILY_NAME = { blade: 'Swords', shield: 'Shields', potion: 'Potions', coin: 'Coins', chest: 'Treasure',
+export const FAMILY_NAME = { blade: 'Weapons', shield: 'Shields', potion: 'Potions', coin: 'Coins', chest: 'Treasure',
   clover: 'Clovers', skull: 'Curses', bomb: 'Bombs', dice: 'Dice', wild: 'Wildcards' };
 export const FAMILY_ICON = { blade: 'sword', shield: 'shield', potion: 'potion', coin: 'coin', chest: 'chest',
   clover: 'clover', skull: 'skull', bomb: 'bomb', dice: 'dice', wild: 'wild' };
@@ -62,8 +74,8 @@ export const LINE_BONUS = {
   coin:   { name: 'JACKPOT',        color: '#ffd24a', desc: 'Gold burst and +1 Fortune: every coin pays +1', short: 'Gold burst, +1 Fortune' },
   chest:  { name: 'TREASURE TROVE', color: '#ffb84a', desc: 'A Rare-or-better card after this fight', short: 'Rare+ card after the fight' },
   clover: { name: 'LUCKY STREAK',   color: '#7aff8a', desc: '+10% Luck and a free spin', short: '+10% Luck, free spin' },
-  skull:  { name: 'DOOM',           color: '#c86aff', desc: 'The curse rebounds: 6 damage to the foe', short: '6 damage to the foe' },
-  bomb:   { name: 'KABOOM',         color: '#ff9a4a', desc: '10 damage now, and +1 Blast: bombs deal +2 for the rest of the run', short: '10 damage, +1 Blast (bombs +2)' },
+  skull:  { name: 'DOOM',           color: '#c86aff', desc: 'The curse rebounds: 6 damage to the foe', short: '6 damage to the foe', hit: 1 },
+  bomb:   { name: 'KABOOM',         color: '#ff9a4a', desc: '10 damage now, and +1 Blast: bombs deal +2 for the rest of the run', short: '10 damage, +1 Blast (bombs +2)', hit: 1 },
   dice:   { name: 'HIGH ROLLER',    color: '#e8e0ff', desc: 'Roll 3 dice for gold, and +10% Luck', short: 'Roll 3 dice for gold, +10% Luck' },
   wild:   { name: 'MEGA JACKPOT',   color: '#ff6ae0', desc: '+1 Might, +1 Guard, +1 Fortune and +10% Luck', short: '+1 Might, Guard, Fortune, +10% Luck' },
 };
@@ -74,7 +86,17 @@ export const SPECIAL_LINE = {
   vial:         { name: 'BLOODLUST',    color: '#ff5a7a', desc: '+1 Lifesteal: heal 1 after every spin that hits', short: '+1 Lifesteal: heal on every hit spin' },
   charm:        { name: 'BLESSED',      color: '#7affc8', desc: 'Every symbol this spin triggers twice', short: 'Every symbol triggers twice' },
   mimic:        { name: 'MIMIC HOARD',  color: '#ffb84a', desc: 'An Epic-or-better card after this fight', short: 'Epic+ card after the fight' },
-  skull_cursed: { name: "DEATH'S DOOR", color: '#c86aff', desc: '12 damage to the foe', short: '12 damage to the foe' },
+  skull_cursed: { name: "DEATH'S DOOR", color: '#c86aff', desc: '12 damage to the foe', short: '12 damage to the foe', hit: 1 },
+  spear:        { name: 'SPEAR WALL',   color: '#d8c090', desc: '+1 Guard and +3 Armor', short: '+1 Guard, +3 Armor' },
+  axe:          { name: 'SUNDER',       color: '#ff8a5a', desc: '8 damage that ignores block', short: '8 damage, ignores block', hit: 1 },
+  knives:       { name: 'KNIFE STORM',  color: '#c8d0e0', desc: '6 more knives: 1 damage each (+Might)', short: '6 extra hits of 1', hit: 1 },
+  hammer:       { name: 'EARTHQUAKE',   color: '#b8a080', desc: 'The foe is stunned for 2 turns', short: 'Stun for 2 turns' },
+  crossbow:     { name: 'VOLLEY',       color: '#d8b070', desc: '3 bolts of 3 damage', short: '3 bolts of 3 damage', hit: 1 },
+  flail:        { name: 'WRECKING BALL', color: '#a0a8b8', desc: '12 damage', short: '12 damage', hit: 1 },
+  flame:        { name: 'INFERNO',      color: '#ff7a2a', desc: 'The foe burns for 6 turns', short: 'Ablaze for 6 turns' },
+  scythe:       { name: 'HARVEST',      color: '#b07aff', desc: 'Reap the foe if it is below 50% HP, else 6 damage', short: 'Reap below 50% HP, else 6', hit: 1 },
+  spiked:       { name: 'IRON MAIDEN',  color: '#9ab0d0', desc: '+1 Guard and 5 damage', short: '+1 Guard, 5 damage', hit: 1 },
+  potion3:      { name: 'PANACEA',      color: '#ff7a9a', desc: 'Heal to full HP', short: 'Full heal' },
 };
 
 // 3+ of a family anywhere on the reels in one spin: a bonus roll (Luck adds to the odds).
@@ -112,7 +134,31 @@ export const CARDS = {
   wild_card:        { name: 'Wild Card',        rarity: 'epic',      type: 'add',     sym: 'wild' },
   four_leaf:        { name: 'Four Leaf',        rarity: 'legendary', type: 'passive', relic: 'four_leaf',
                       desc: 'Increase rare symbol chance by 5%.' },
+  // new weapons
+  spear:            { name: 'Spear',            rarity: 'common',    type: 'add',     sym: 'spear' },
+  battle_axe:       { name: 'Battle Axe',       rarity: 'uncommon',  type: 'add',     sym: 'axe' },
+  throwing_knives:  { name: 'Throwing Knives',  rarity: 'uncommon',  type: 'add',     sym: 'knives' },
+  war_hammer:       { name: 'War Hammer',       rarity: 'rare',      type: 'add',     sym: 'hammer' },
+  crossbow:         { name: 'Crossbow',         rarity: 'rare',      type: 'add',     sym: 'crossbow' },
+  morning_star:     { name: 'Morning Star',     rarity: 'rare',      type: 'add',     sym: 'flail' },
+  flame_brand:      { name: 'Flame Brand',      rarity: 'epic',      type: 'upgrade', from: ['sword2'],           to: 'flame' },
+  reapers_scythe:   { name: "Reaper's Scythe",  rarity: 'epic',      type: 'add',     sym: 'scythe' },
+  // new gear + boons
+  spiked_shield:    { name: 'Spiked Shield',    rarity: 'uncommon',  type: 'upgrade', from: ['shield'],           to: 'spiked' },
+  greater_potion:   { name: 'Greater Potion',   rarity: 'rare',      type: 'upgrade', from: ['potion2'],          to: 'potion3' },
+  horseshoe:        { name: 'Horseshoe',        rarity: 'rare',      type: 'passive', relic: 'horseshoe',
+                      desc: '+10% Luck for the rest of the run.' },
+  heart_container:  { name: 'Heart Container',  rarity: 'uncommon',  type: 'boost',   stat: 'maxHp', amount: 5,
+                      desc: '+5 Max HP and heal 5.' },
+  whetstone:        { name: 'Whetstone',        rarity: 'rare',      type: 'boost',   stat: 'might', amount: 1,
+                      desc: '+1 Might: every hit deals +1.' },
+  holy_water:       { name: 'Holy Water',       rarity: 'common',    type: 'purge',
+                      desc: 'Remove a Curse from your reels.' },
 };
+
+// card-face icon for cards that don't put a symbol on the reels
+export const CARD_ICON = { horseshoe: 'horseshoe', heart_container: 'heart_plus', whetstone: 'whetstone',
+  holy_water: 'holy_water', four_leaf: 'clover4' };
 
 export const CARD_PRICE = { common: 8, uncommon: 14, rare: 22, epic: 34, legendary: 50 };
 

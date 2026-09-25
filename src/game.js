@@ -137,7 +137,7 @@ export class Game {
       const mult = 1 + (this.floor - 1) * 0.16;
       const hp = Math.round(def.hp * mult * (e.elite ? 1.7 : 1));
       const ent = { ...e, def, hp, maxHp: hp, atk: def.atk + Math.floor((this.floor - 1) / 3) + (e.elite ? 1 : 0),
-               poison: 0, alive: true, flash: 0, advance: 0, turn: 0, fadeOut: 0,
+               poison: 0, burn: 0, stunTurns: 0, alive: true, flash: 0, advance: 0, turn: 0, fadeOut: 0,
                phase: Math.random() * 6, scale: ENEMY_SCALE * (e.elite ? 1.3 : 1) };
       ent.animator = this.makeAnimator(def.model);
       return ent;
@@ -521,10 +521,10 @@ export class Game {
     C.phase = 'resolving';
     C.queue = [];
     C.dealt = 0; C.swords = 0; C.vials = 0; C.charm = false; C.frenzy = false; C.doubleGold = false;
-    C.blessed = false; C.chain = false;
+    C.blessed = false; C.chain = false; C.stun = false;
     const flat = C.grid.flat();
     C.charm = flat.includes('charm');
-    C.swordsLanded = flat.some(s => SYMBOLS[s].dmg && !SYMBOLS[s].self);
+    C.swordsLanded = flat.some(s => FAMILY[s] === 'blade');
     // Loaded Dice: reroll the worst symbol before anything resolves
     if (flat.includes('dice')) {
       let worst = null;
@@ -538,7 +538,7 @@ export class Game {
         this.audio.play('luck');
       }
     }
-    const hits = b => (b.line === 'skull' || b.line === 'bomb' || b.special === 'skull_cursed' ? 1 : 0);
+    const hits = b => ((b.line && LINE_BONUS[b.line].hit) || (b.special && SPECIAL_LINE[b.special].hit) ? 1 : 0);
     for (const b of this.findBonuses(C.grid).sort((a, b) => hits(a) - hits(b))) C.queue.push(b);
     for (let row = 0; row < 2; row++) for (let reel = 0; reel < 3; reel++) C.queue.push([row, reel]);
     C.nextAt = this.time + (C.queue.length > 6 ? 0.35 : 0.15);
@@ -633,6 +633,29 @@ export class Game {
       case 'charm': C.blessed = true; break;
       case 'mimic': C.rewards.push({ n: 3, source: 'hoard', min: 'epic' }); break;
       case 'skull_cursed': if (e.alive) this.damageEnemy(12, true); break;
+      case 'spear': {
+        P.guard++; P.armor += 3;
+        const [hx, hy] = this.slot.hpAnchor();
+        this.ui.float('+3 Armor', hx, hy - 22, '#9ab8ff', this.time, { size: 13 });
+        this.audio.play('block');
+        break;
+      }
+      case 'axe': if (e.alive) this.damageEnemy(8, true); break;
+      case 'knives':
+        for (let k = 0; k < 6; k++) this.later(k * 0.12, () => { if (e.alive) this.damageEnemy(1 + P.might, false); });
+        break;
+      case 'hammer': C.stun = true; e.stunTurns = 1; this.ui.float('Stunned!', ...this.enemyScreen(1.05), '#ffe070', this.time, { size: 15 }); break;
+      case 'crossbow':
+        for (let k = 0; k < 3; k++) this.later(k * 0.18, () => { if (e.alive) this.damageEnemy(3, true); });
+        break;
+      case 'flail': if (e.alive) this.damageEnemy(12, true); break;
+      case 'flame': e.burn = Math.max(e.burn || 0, 6); this.ui.float('Ablaze!', ...this.enemyScreen(0.8), '#ff8a3a', this.time, { size: 15 }); break;
+      case 'scythe':
+        if (e.alive && e.hp <= e.maxHp * 0.5) { this.ui.float('Reaped!', ...this.enemyScreen(1.05), '#c8a0ff', this.time, { size: 16 }); this.damageEnemy(e.hp, true); }
+        else if (e.alive) this.damageEnemy(6, true);
+        break;
+      case 'spiked': P.guard++; if (e.alive) this.damageEnemy(5, true); break;
+      case 'potion3': this.heal(P.maxHp, 0, 0); break;
     }
     if (C.phase === 'resolving') C.nextAt = this.time + 1.25;
   }
@@ -699,17 +722,31 @@ export class Game {
     const C = this.combat, P = this.player, e = C.e;
     const oy = rep * -14;
     if (s.dmg && e.alive) {
-      let dmg = s.dmg + P.might;
+      let dmg = (s.dmgRoll ? s.dmgRoll[0] + Math.floor(Math.random() * (s.dmgRoll[1] - s.dmgRoll[0] + 1)) : s.dmg) + P.might;
+      if (s.phalanx) dmg += C.grid.flat().filter(x => x === id).length - 1;
       if (s.aoe) { dmg += 2 * P.blast; if (C.chain) dmg *= 2; }
       let crit = false;
-      if (C.frenzy || (s.crit && Math.random() < s.crit)) { dmg *= 2; crit = true; }
-      if (e.def.armor && !C.enemyBlocked) {
+      if (C.frenzy || (s.crit && Math.random() < s.crit) || (s.opener && e.hp >= e.maxHp)) { dmg *= 2; crit = true; }
+      if (e.def.armor && !C.enemyBlocked && !s.pierce) {
         C.enemyBlocked = true;
         dmg = Math.max(0, dmg - e.def.armor);
         this.ui.float('Block', ...this.enemyScreen(0.5), '#b8c8ff', this.time, { size: 12, dy: -18 });
       }
-      this.damageEnemy(dmg, crit);
+      if (s.pierce && e.def.armor) this.ui.float('Cleave!', ...this.enemyScreen(0.5), '#ffb08a', this.time, { size: 12, dy: -18 });
+      for (let h = 0; h < (s.hits || 1) && e.alive; h++) this.damageEnemy(dmg, crit);
       if (dmg > 0) C.dealt++;
+      if (s.burn && e.alive) {
+        e.burn = Math.max(e.burn || 0, s.burn);
+        this.ui.float('Ablaze!', ...this.enemyScreen(0.8), '#ff8a3a', this.time, { size: 13 });
+      }
+      if (s.stun && e.alive && Math.random() < s.stun) {
+        C.stun = true;
+        this.ui.float('Stunned!', ...this.enemyScreen(1.05), '#ffe070', this.time, { size: 14 });
+      }
+      if (s.execute && e.alive && e.hp <= e.maxHp * s.execute) {
+        this.ui.float('Reaped!', ...this.enemyScreen(1.05), '#c8a0ff', this.time, { size: 16 });
+        this.damageEnemy(e.hp, true);
+      }
       if (s.poison) { e.poison += s.poison + P.venom; this.ui.float(`Poison ${e.poison}`, ...this.enemyScreen(0.7), '#8aff6a', this.time, { size: 12 }); }
     }
     if (s.armor) {
@@ -805,12 +842,28 @@ export class Game {
       this.ui.float(`-${e.poison} poison`, x, y, '#8aff6a', this.time, { size: 13 });
       if (e.hp <= 0) { this.killEnemy(); return; }
     }
+    if (e.burn > 0) {
+      e.hp -= 2; e.burn--;
+      e.flash = 0.7;
+      const [x, y] = this.enemyScreen(0.7);
+      this.ui.float('-2 burn', x + 14, y, '#ff8a3a', this.time, { size: 13 });
+      if (e.hp <= 0) { this.killEnemy(); return; }
+    }
     C.enemyBlocked = false;
     if (C.freeSpin) {
       C.freeSpin = false;
       C.phase = 'ready';
       this.slot.state.spinEnabled = true;
       this.ui.toast('Free spin!', this.time, '#7aff8a');
+      return;
+    }
+    if (C.stun || e.stunTurns > 0) {
+      if (!C.stun) e.stunTurns--;
+      C.stun = false;
+      this.ui.toast(`The ${e.def.name} is stunned and can't attack!`, this.time, '#ffe070');
+      this.anim(e, 'hit', { fade: 0.05 });
+      C.phase = 'ready';
+      this.slot.state.spinEnabled = true;
       return;
     }
     C.phase = 'enemy';
@@ -909,6 +962,7 @@ export class Game {
     return Object.entries(CARDS).filter(([id, c]) => {
       if (c.type === 'upgrade') return c.from.some(f => bag.includes(f));
       if (c.type === 'passive') return !this.player.relics.has(c.relic);
+      if (c.type === 'purge') return bag.includes('skull');
       return true;
     }).map(([id]) => id);
   }
@@ -953,12 +1007,21 @@ export class Game {
     else if (c.type === 'upgrade') {
       const i = P.bag.findIndex(s => c.from.includes(s));
       if (i >= 0) P.bag[i] = c.to;
-    } else if (c.type === 'passive') P.relics.add(c.relic);
+    } else if (c.type === 'passive') {
+      P.relics.add(c.relic);
+      if (c.relic === 'horseshoe') P.luck = Math.round((P.luck + 0.1) * 100) / 100;
+    } else if (c.type === 'boost') {
+      if (c.stat === 'maxHp') { P.maxHp += c.amount; this.slot.state.maxHp = P.maxHp; this.heal(c.amount, 0, 0); }
+      else P[c.stat] += c.amount;
+    } else if (c.type === 'purge') {
+      const i = P.bag.indexOf('skull');
+      if (i >= 0) P.bag.splice(i, 1);
+    }
   }
 
   cardDesc(id) {
     const c = CARDS[id];
-    if (c.type === 'passive') return c.desc;
+    if (c.desc) return c.desc;
     const sym = SYMBOLS[c.type === 'add' ? c.sym : c.to];
     const how = c.type === 'add' ? 'Add to reels: ' : `Upgrade a ${SYMBOLS[c.from.find(f => this.player.bag.includes(f)) || c.from[0]].name}: `;
     return how + sym.desc;
@@ -996,7 +1059,9 @@ export class Game {
     this.cards.pick(i, this.time);
     this.applyCard(id);
     this.audio.play('pick');
-    this.ui.toast(`${CARDS[id].name} added to your reels`, this.time, RARITY[CARDS[id].rarity].color);
+    const kind = CARDS[id].type;
+    this.ui.toast(kind === 'add' || kind === 'upgrade' ? `${CARDS[id].name} added to your reels` : `${CARDS[id].name}!`,
+      this.time, RARITY[CARDS[id].rarity].color);
     this.rewardPicked = this.time;
   }
 
@@ -1335,6 +1400,7 @@ export class Game {
     ix += 50;
     if (P.armor) { U.icon(this.a.icons48.shield, ix, 6, 20); U.text(`${P.armor}`, ix + 23, 21, { size: 13, color: '#b8c8ff' }); ix += 46; }
     if (P.relics.has('four_leaf')) { U.icon(this.a.icons48.clover4, ix, 6, 20); ix += 26; }
+    if (P.relics.has('horseshoe')) { U.icon(this.a.icons48.horseshoe, ix, 6, 20); ix += 26; }
     U.icon(this.a.icons48.coins, ix, 6, 20);
     U.text(`${P.bag.length}`, ix + 23, 21, { size: 12, color: '#d8c8a8' });
     // run stats from paylines: Might / Guard / Fortune / Luck
@@ -1380,6 +1446,8 @@ export class Game {
       U.icon(this.a.icons48.sword, x + bw / 2 + 3, y - 15, 14);
       U.text(`${e.atk}`, x + bw / 2 + 19, y - 4, { size: 11, color: '#ffb0a0' });
       if (e.poison) { U.icon(this.a.icons48.dagger, x - bw / 2 - 17, y - 15, 14); U.text(`${e.poison}`, x - bw / 2 - 20, y - 4, { size: 10, align: 'right', color: '#8aff6a' }); }
+      if (e.burn) { U.icon(this.a.icons48.fire, x - bw / 2 - 17, y - 1, 14); U.text(`${e.burn}`, x - bw / 2 - 20, y + 10, { size: 10, align: 'right', color: '#ff8a3a' }); }
+      if (e.stunTurns > 0 || (this.combat.stun)) U.text('STUNNED', x, y - 22, { size: 9, align: 'center', color: '#ffe070' });
       U.text(`${Math.max(0, e.hp)}/${e.maxHp}`, x, y + 8, { size: 9, align: 'center', color: '#e8d8d0' });
       if (this.combat.phase === 'ready') {
         const r = this.slot.spinRect();
@@ -1618,15 +1686,16 @@ export class Game {
         U.text(desc, x + 130, y, { size: 8, bold: false, color: '#cfc4b0' });
       } else U.text(desc, x + 104, y, { size: 8, bold: false, color: '#cfc4b0' });
     };
+    const RH = 12.5;
     let y = y0 + 8;
     U.text('3 IN A ROW  (permanent, Wildcards fill in)', xl, y, { size: 9, color: '#ffd878' });
-    Object.entries(LINE_BONUS).forEach(([f, L], i) => row(xl, y + 15 + i * 13, FAMILY_ICON[f], L.name, L.color, L.short));
-    U.text('SAME RARE SYMBOL x3 IN A ROW  (extra bonus)', xr, y, { size: 9, color: '#ffd878' });
-    Object.entries(SPECIAL_LINE).forEach(([id, S], i) => row(xr, y + 15 + i * 13, SYMBOLS[id].icon, S.name, S.color, S.short));
-    y += 15 + Object.keys(SPECIAL_LINE).length * 13 + 8;
-    U.text(`3 ANYWHERE  (bonus roll, +${Math.round(P.luck * 100)}% Luck)`, xr, y, { size: 9, color: '#ffd878' });
+    Object.entries(LINE_BONUS).forEach(([f, L], i) => row(xl, y + 14 + i * RH, FAMILY_ICON[f], L.name, L.color, L.short));
+    y += 14 + Object.keys(LINE_BONUS).length * RH + 8;
+    U.text(`3 ANYWHERE  (bonus roll, +${Math.round(P.luck * 100)}% Luck)`, xl, y, { size: 9, color: '#ffd878' });
     Object.entries(SCATTER_BONUS).forEach(([f, S], i) =>
-      row(xr, y + 15 + i * 13, FAMILY_ICON[f], S.name, S.color, S.desc, Math.round(Math.min(1, S.chance + P.luck) * 100)));
+      row(xl, y + 14 + i * RH, FAMILY_ICON[f], S.name, S.color, S.desc, Math.round(Math.min(1, S.chance + P.luck) * 100)));
+    U.text('SAME RARE SYMBOL x3 IN A ROW  (extra bonus)', xr, y0 + 8, { size: 9, color: '#ffd878' });
+    Object.entries(SPECIAL_LINE).forEach(([id, S], i) => row(xr, y0 + 22 + i * RH, SYMBOLS[id].icon, S.name, S.color, S.short));
   }
 
   drawMap() {

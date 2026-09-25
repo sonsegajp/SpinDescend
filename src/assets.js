@@ -48,7 +48,7 @@ export async function loadAll(onProgress) {
   }));
   const texNames = new Set(['parchment', 'card_back', 'st_ui', 'bake_knight_paladin']);
   for (const m of MODELS) for (const s of raws[m].sections) if (s.tex && s.tex[0] !== '@') texNames.add(s.tex);
-  const iconNames = new Set(['heart', 'coins', 'boots']);
+  const iconNames = new Set(['heart', 'coins', 'boots', 'fire', 'horseshoe']);
   for (const s of Object.values(SYMBOLS)) iconNames.add(s.icon);
   const jobs = [];
   for (const t of texNames) jobs.push(['textures', t, BASE + 'textures/' + t + '.png']);
