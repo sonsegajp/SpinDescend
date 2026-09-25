@@ -1,19 +1,20 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260925190902';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925190902';
-import { Renderer, invert } from './render.js?v=20260925190902';
-import { SlotMachine } from './slot.js?v=20260925190902';
-import { CardView } from './cards.js?v=20260925190902';
-import { UI, SERIF } from './ui.js?v=20260925190902';
-import { Animator } from './anim.js?v=20260925190902';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260925190902';
-import { is } from './input.js?v=20260925190902';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260925190902';
+import { gl } from './gl.js?v=20260925194320';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925194320';
+import { Renderer, invert } from './render.js?v=20260925194320';
+import { SlotMachine } from './slot.js?v=20260925194320';
+import { CardView } from './cards.js?v=20260925194320';
+import { UI, SERIF } from './ui.js?v=20260925194320';
+import { Animator } from './anim.js?v=20260925194320';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260925194320';
+import { is } from './input.js?v=20260925194320';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260925194320';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, KNIGHT_BAG, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925190902';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925194320';
 
 const EYE = 0.84, BACK = 0.8, PITCH = -0.19, FOV = 58 * Math.PI / 180;
+const SHOP_YAW = 0.34;                                            // shop: camera turns so the merchant stands right of the cards
 const ENEMY_SCALE = 1.18;
 const dirYaw = d => Math.atan2(DX[d], DY[d]);
 
@@ -38,7 +39,8 @@ export class Game {
     this.W = W; this.H = H;
     this.ui.resize(W, H, this.pipe.HUD);
     this.slot.layout(W, H);
-    this.cards.layout(W, H, this.slot);
+    if (this.state === 'shop') this.cards.layout(W, H, this.slot, [0.28, 0.86], 0.78);
+    else this.cards.layout(W, H, this.slot);
     this.proj = perspective(FOV, W / H, 0.05, 90);
   }
 
@@ -54,6 +56,11 @@ export class Game {
       };
     }
     if (q.get('skin') === 'paladin') this.skin = 'paladin';
+    if (q.get('model') && this.a.models[q.get('model')]) {             // ?title&model=name&yaw=deg: show any model on the plinth
+      this.viewModel = q.get('model');
+      this.viewYaw = parseFloat(q.get('yaw') || '0') * Math.PI / 180;
+      if (this.a.anims[this.viewModel]) this.titleKnight = this.makeAnimator(this.viewModel);
+    }
     if (q.get('seed')) this.fixedSeed = parseInt(q.get('seed'), 10);
     if (q.has('title')) return;
     this.newRun();
@@ -102,7 +109,7 @@ export class Game {
         const trade = () => {
           if (!this.prompt || this.move) { this.later(0.2, trade); return; }
           this.choose('use');
-          this.later(1.0, () => this.leaveShop());
+          if (!q.has('stay')) this.later(1.0, () => this.leaveShop());      // ?merchant&trade&stay: stay in the shop
         };
         if (q.has('trade')) this.later(0.5, trade);
       }
@@ -216,6 +223,11 @@ export class Game {
     }
     this.time = now;
     this.fx.update(dt);
+    const dropTo = this.state === 'shop' || (this.prompt && (this.prompt.kind === 'merchant' || this.prompt.kind === 'wayside')) ? 1 : 0;
+    this.slot.drop += (dropTo - this.slot.drop) * Math.min(1, dt * 5);
+    if (Math.abs(dropTo - this.slot.drop) < 0.002) this.slot.drop = dropTo;
+    const lookTo = this.state === 'shop' ? 1 : 0;                   // turn to put the merchant on the right
+    this.shopLook = (this.shopLook || 0) + (lookTo - (this.shopLook || 0)) * Math.min(1, dt * 4);
     if (this.timers && this.timers.length) {
       const due = this.timers.filter(t => t.at <= now);
       this.timers = this.timers.filter(t => t.at > now);
@@ -1264,7 +1276,8 @@ export class Game {
   openShop(m) {
     if (!m.stock) m.stock = this.rollCards(3, 0.4).map(id => ({ id, price: CARD_PRICE[CARDS[id].rarity] + Math.floor(this.floor / 2) * 2, sold: false }));
     this.shop = { m, items: m.stock.filter(it => !it.sold) };
-    this.cards.show(this.shop.items.map(it => ({ id: it.id, price: it.price })), this.time, 'below');
+    this.cards.layout(this.W, this.H, this.slot, [0.28, 0.86], 0.78);
+    this.cards.show(this.shop.items.map(it => ({ id: it.id, price: it.price })), this.time, 'below', -1);
     this.cards.keyFocus = -1;
     this.state = 'shop';
     this.audio.play('card');
@@ -1272,6 +1285,7 @@ export class Game {
 
   leaveShop() {
     this.cards.hide(); this.state = 'explore'; this.audio.play('click');
+    this.cards.layout(this.W, this.H, this.slot);
     if (this.shop.m.wayside) this.moveOn();
     else { this.dir = (this.dir + 2) % 4; this.startTurn(0.3); this.pendingStep = this.dir; }
   }
@@ -1435,7 +1449,8 @@ export class Game {
   }
 
   computeView(now) {
-    const fx = Math.sin(this.cam.yaw), fz = Math.cos(this.cam.yaw);
+    const yawV = this.cam.yaw + (this.shopLook || 0) * SHOP_YAW;
+    const fx = Math.sin(yawV), fz = Math.cos(yawV);
     let ex = this.cam.x - fx * BACK, ez = this.cam.z - fz * BACK, ey = EYE + this.cam.bob;
     let pitch = PITCH;
     if (this.state === 'title') {
@@ -1522,28 +1537,28 @@ export class Game {
     this.R.drawModel(model, m, { pose: { lid: { rx: lid } }, tint: c.opened ? [1.2, 1.1, 0.9] : [1, 1, 1] });
   }
 
-  // the merchant's pipe: smoke puffs, the odd ember and a smoke ring, drawn on the overlay at the
-  // projected bowl (model-space bowl = Blender (0.13, -0.385, 0.575) x 0.78, in GL axes)
-  merchantSmoke(m, now) {
-    const [px, py, pz] = xform(m, 0.1014, 0.4485, 0.3003);
-    const [sx, sy, w] = this.project(px, py, pz);
-    if (!(w > 0.3) || w > 7 || sx < -20 || sx > this.W + 20 || sy < -20 || sy > this.H + 20) return;
-    const k = Math.min(2.2, Math.max(0.35, 2.6 / w));
-    if (now - (this.smokeT || 0) > 0.12) {
+  // the merchant's pipe: smoke puffs, the odd ember and a smoke ring, emitted in WORLD space at the 'smoke'
+  // socket bone (the pipe bowl, through the same animated part matrix the renderer uses) - so the smoke
+  // stays in the scene when the camera turns or bobs
+  merchantSmoke(m, mats, now) {
+    const mdl = this.a.models.merchant, i = mdl.partIndex.smoke;
+    if (i === undefined) return;
+    const [px, py, pz] = xform(mats ? mul(m, mats[i]) : m, ...mdl.parts[i].pivot);
+    const R = (a, b) => a + Math.random() * (b - a);
+    if (now - (this.smokeT || 0) > 0.11) {
       this.smokeT = now;
-      this.fx.burst(sx, sy, { n: 1, speed: [6 * k, 14 * k], dir: -Math.PI / 2 - 0.25, spread: 0.35, life: [1.4, 2.2],
-                              size: [2.2 * k, 3.2 * k], grow: 2.6, shape: 'smoke', col: ['#d8d4d8', '#c4c0c8', '#e8e4e8'],
-                              g: -8 * k, drag: 0.6, alpha: 0.5 });
-      if (Math.random() < 0.25) {
-        this.fx.burst(sx, sy, { n: 1, speed: [8 * k, 20 * k], dir: -Math.PI / 2, spread: 0.6, life: [0.4, 0.8],
-                                size: [0.8 * k, 1.2 * k], col: ['#ffb040', '#ff7a20'], add: true, g: -30 * k });
+      this.fx.wpart(px, py, pz, { vx: R(-0.02, 0.02), vy: R(0.1, 0.16), vz: R(-0.02, 0.02), lift: 0.03, drag: 0.35,
+                                  life: R(1.6, 2.4), size: R(0.012, 0.018), grow: 3.2, col: ['#d8d4d8', '#c4c0c8', '#e8e4e8'][R(0, 3) | 0],
+                                  alpha: 0.55 });
+      if (Math.random() < 0.2) {
+        this.fx.wpart(px, py, pz, { vx: R(-0.03, 0.03), vy: R(0.18, 0.3), vz: R(-0.03, 0.03), life: R(0.4, 0.8), size: 0.005,
+                                    shape: 'px', col: Math.random() < 0.5 ? '#ffb040' : '#ff7a20', add: true });
       }
     }
     if (now - (this.ringT || 0) > 2.6) {
       this.ringT = now;
-      this.fx.burst(sx, sy - 4 * k, { n: 1, speed: [10 * k, 12 * k], dir: -Math.PI / 2, spread: 0.05, life: [1.6, 1.8],
-                                      size: [1.5 * k, 1.5 * k], grow: 3.2, shape: 'ring', col: '#e0dce4', w: 1.2, drag: 0.4,
-                                      alpha: 0.7 });
+      this.fx.wpart(px, py + 0.02, pz, { vy: 0.12, drag: 0.3, life: 1.8, size: 0.012, grow: 3.4, shape: 'ring', col: '#e0dce4',
+                                         w: 1.2, alpha: 0.7 });
     }
   }
 
@@ -1557,7 +1572,7 @@ export class Game {
       const gy = Math.atan2(this.cam.x - bx, this.cam.z - bz);
       const m = trs(bx, 0, bz, gy, 0, 0, ENEMY_SCALE * 0.95);
       this.R.drawModel(gob, m, { mats, hide: new Set(['weapon']) });
-      this.merchantSmoke(m, now);
+      this.merchantSmoke(m, mats, now);
       const cx = bx + ax * 0.62 + DX[mc.side] * 0.08, cz = bz + az * 0.62 + DY[mc.side] * 0.08;
       this.R.drawModel(this.a.models.crate, trs(cx, 0, cz, gy, 0, 0, 0.8));
       this.R.drawModel(this.a.models.lantern, trs(cx, -1.62, cz, 0, 0, 0, 1));
@@ -1565,23 +1580,24 @@ export class Game {
     }
     const m = trs(mc.x * CELL, 0, mc.y * CELL, yaw, 0, 0, ENEMY_SCALE * 0.95);
     this.R.drawModel(gob, m, { mats, hide: new Set(['weapon']) });
-    this.merchantSmoke(m, now);
+    this.merchantSmoke(m, mats, now);
     const fx = Math.sin(yaw), fz = Math.cos(yaw);
     this.R.drawModel(this.a.models.crate, trs(mc.x * CELL + fx * 0.62 - fz * 0.35, 0, mc.y * CELL + fz * 0.62 + fx * 0.35, yaw, 0, 0, 0.8));
     this.R.drawModel(this.a.models.lantern, trs(mc.x * CELL + fx * 0.62 - fz * 0.35, -1.62, mc.y * CELL + fz * 0.62 + fx * 0.35, 0, 0, 0, 1));
   }
 
   drawTitleKnight(now) {
-    const k = this.a.models.knight;
+    const k = this.a.models[this.viewModel || 'knight'];
     const fx = Math.sin(this.cam.yaw), fz = Math.cos(this.cam.yaw);
     const rx = -fz, rz = fx;                                                    // camera right (lookAt x axis)
     const x = this.cam.x + fx * 2.0 + rx * 0.6, z = this.cam.z + fz * 2.0 + rz * 0.6;
-    const yaw = this.cam.yaw + Math.PI + Math.sin(now * 0.35) * 0.35;
+    const yaw = this.cam.yaw + Math.PI + (this.viewModel ? this.viewYaw : Math.sin(now * 0.35) * 0.35);
     const A = this.titleKnight;
     const mats = A ? A.matrices() : null;
     const tex = this.skin === 'paladin' ? this.paladin() : null;
     this.R.drawModel(this.a.models.dun_pillar, mul(trs(x, -2.32, z, 0), [1.4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1.4, 0, 0, 0, 0, 1]));
-    this.R.drawModel(k, trs(x, 0.28, z, yaw, 0, 0, 0.9), { mats, texOverride: tex ? { bake_knight: tex } : null });
+    this.R.drawModel(k, trs(x, 0.28, z, yaw, 0, 0, 0.9), { mats, texOverride: tex ? { bake_knight: tex } : null,
+                                                     hide: this.viewModel ? new Set(['weapon']) : undefined });
     this.titleKnightPos = [x, 1.35, z];
   }
 
@@ -1677,7 +1693,14 @@ export class Game {
     if (this.state === 'stairs') this.drawStairsUI(now, ptr);
     if (this.state === 'bag') this.drawBag(now, ptr);
     if (this.showMap && this.state !== 'bag') this.drawMap();
-    if (this.state !== 'bag') { this.fx.draw(g, W, H); U.drawFloats(now); }
+    if (this.state !== 'bag') {
+      const tanH = Math.tan(FOV / 2);
+      this.fx.draw(g, W, H, (x, y, z) => {
+        const [sx, sy, w] = this.project(x, y, z);
+        return w > 0.05 ? [sx, sy, H / 2 / (w * tanH)] : null;
+      });
+      U.drawFloats(now);
+    }
     if (this.state === 'dead' || this.state === 'won') this.drawEnd(now, ptr);
     if (this.state === 'combat' && this.floor === 1 && this.player && this.player.kills === 0)
       U.text('3 in a row = a permanent bonus   3 anywhere = a bonus roll   TAB: reels + paytable', W / 2, 12, { size: 8, align: 'center', color: '#cfc2a8', alpha: 0.8, bold: false });
@@ -1820,14 +1843,14 @@ export class Game {
 
   drawShopUI(now, ptr) {
     const U = this.ui, W = this.W;
-    U.text('THE MERCHANT', W / 2, 34, { size: 18, align: 'center', color: '#b8e878', spacing: 2 });
-    U.text('"Cards for coin, traveler. Fortune favors the brave."', W / 2, 48, { size: 10, align: 'center', color: '#d8ccb8', bold: false });
+    U.text('THE MERCHANT', W * 0.26, 70, { size: 18, align: 'center', color: '#b8e878', spacing: 2 });
+    U.text('"Cards for coin, traveler."', W * 0.26, 84, { size: 10, align: 'center', color: '#d8ccb8', bold: false });
     this.drawCardInfo(this.cardHover >= 0 ? this.cardHover : this.cards.keyFocus, now);
     const hasCurse = this.player.bag.includes('skull');
-    const bx = W - 128, by = 70;
-    U.button('heal', 'Heal 6 HP (6g)', bx, by, 118, 18, ptr, { size: 10, disabled: this.player.gold < 6 || this.player.hp >= this.player.maxHp });
-    U.button('purge', 'Purge a Curse (10g)', bx, by + 24, 118, 18, ptr, { size: 10, disabled: this.player.gold < 10 || !hasCurse });
-    U.button('leave', 'Leave  [ESC]', bx, by + 48, 118, 18, ptr, { size: 11 });
+    const bx = 12, by = this.H - 30;
+    U.button('heal', 'Heal 6 HP (6g)', bx, by, 104, 18, ptr, { size: 10, disabled: this.player.gold < 6 || this.player.hp >= this.player.maxHp });
+    U.button('purge', 'Purge a Curse (10g)', bx + 110, by, 116, 18, ptr, { size: 10, disabled: this.player.gold < 10 || !hasCurse });
+    U.button('leave', 'Leave  [ESC]', bx + 232, by, 84, 18, ptr, { size: 11 });
   }
 
   drawStairsUI(now, ptr) {

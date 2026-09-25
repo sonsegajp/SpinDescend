@@ -1,8 +1,8 @@
 // cards.js - 3D upgrade cards (card mesh + concept card art) for loot rewards,
 // the merchant, and the title's character plate. Cards fly in face-down, flip,
 // hover-tilt toward the pointer, and fly into the reels when chosen.
-import { gl, texFromImage } from './gl.js?v=20260925190902';
-import { perspective, lookAt, mul, trs, xform, easeOutBack, easeOut, clamp } from './math.js?v=20260925190902';
+import { gl, texFromImage } from './gl.js?v=20260925194320';
+import { perspective, lookAt, mul, trs, xform, easeOutBack, easeOut, clamp } from './math.js?v=20260925194320';
 
 export class CardView {
   constructor(renderer, assets) {
@@ -27,7 +27,7 @@ export class CardView {
     return t;
   }
 
-  layout(W, H, slot) {
+  layout(W, H, slot, band, scale) {
     this.W = W; this.H = H;
     const aspect = W / H;
     this.fov = 30 * Math.PI / 180;
@@ -37,18 +37,21 @@ export class CardView {
     const hh = 4.2 * Math.tan(this.fov / 2);
     const topFrac = slot ? slot.screenTop / H : 0.55;
     // free area: below the header text (~17% of the screen) down to the machine top
-    const areaTop = 0.155, areaBot = topFrac + 0.03;       // cards may overlap the machine's top edge
+    const [areaTop, areaBot] = band || [0.155, topFrac + 0.03];   // cards may overlap the machine's top edge
     this.centerY = hh * (1 - (areaTop + areaBot));
-    this.cardScale = Math.min(1.2, (hh * 2 * (areaBot - areaTop) * 0.92) / 0.96);
+    this.cardScale = scale || Math.min(1.2, (hh * 2 * (areaBot - areaTop) * 0.92) / 0.96);
+    this.hw = hh * aspect;
     this.hh = hh;
   }
 
   // entries: [{ id, price? , label? }]
-  show(entries, now, from = 'below') {
+  // side: 0 = centred, -1 = packed into the left half of the screen (the merchant stands on the right)
+  show(entries, now, from = 'below', side = 0) {
     const n = entries.length;
     const gap = 0.7 * this.cardScale;
+    const shift = side < 0 ? -this.hw * 0.5 : 0;
     this.cards = entries.map((e, i) => ({
-      ...e, x: (i - (n - 1) / 2) * gap, t0: now + i * 0.12, hover: 0, picked: false, pickT: 0, gone: false,
+      ...e, x: (i - (n - 1) / 2) * gap + shift, t0: now + i * 0.12, hover: 0, picked: false, pickT: 0, gone: false,
       from,
     }));
     this.active = true;

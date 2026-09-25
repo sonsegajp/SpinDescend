@@ -32,9 +32,19 @@ export class FX {
     this.parts = [];
     this.shots = [];
     this.flashes = [];
+    this.wparts = [];                                   // world-space particles (pipe smoke): projected each frame
   }
 
-  clear() { this.parts = []; this.shots = []; this.flashes = []; }
+  clear() { this.parts = []; this.shots = []; this.flashes = []; this.wparts = []; }
+
+  // a world-space particle: position/velocity in world units; size in world units (grows to size*grow);
+  // lift = upward acceleration, drag slows it; drawn through the camera every frame so it stays in the scene
+  wpart(x, y, z, o) {
+    if (this.wparts.length > 300) return;
+    this.wparts.push({ x, y, z, vx: o.vx || 0, vy: o.vy || 0, vz: o.vz || 0, lift: o.lift || 0, drag: o.drag || 0, t: 0,
+                       life: o.life, size: o.size, size1: o.size * (o.grow ?? 1), shape: o.shape || 'smoke',
+                       col: o.col, add: !!o.add, alpha: o.alpha ?? 1, w: o.w || 1, rot: 0, vr: 0 });
+  }
 
   // ---------------------------------------------------------------- emitters
   // o: n, speed [a,b], life [a,b], size [a,b], grow (end size x), dir + spread (radians),
@@ -107,10 +117,25 @@ export class FX {
     this.shots = this.shots.filter(s => !s.done);
     for (const f of this.flashes) f.t += dt;
     this.flashes = this.flashes.filter(f => f.t < f.dur);
+    for (const p of this.wparts) {
+      p.t += dt;
+      if (p.drag) { const k = Math.max(0, 1 - p.drag * dt); p.vx *= k; p.vy *= k; p.vz *= k; }
+      p.vy += p.lift * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+    }
+    this.wparts = this.wparts.filter(p => p.t < p.life);
   }
 
   // ---------------------------------------------------------------- drawing
-  draw(g, W, H) {
+  // project(x, y, z) -> [screenX, screenY, pixelsPerWorldUnit] (or null when behind the camera)
+  draw(g, W, H, project) {
+    if (project) {
+      for (const p of this.wparts) {
+        const s = project(p.x, p.y, p.z);
+        if (!s) continue;
+        this.drawPart(g, { ...p, x: s[0], y: s[1], size: p.size * s[2], size1: p.size1 * s[2] });
+      }
+    }
     for (const f of this.flashes) {
       g.globalAlpha = f.a * (1 - f.t / f.dur);
       g.globalCompositeOperation = 'lighter';

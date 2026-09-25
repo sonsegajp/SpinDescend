@@ -4,9 +4,9 @@
 // Reels are cylinders with 8 symbol slots around them; their texture is a
 // canvas strip redrawn whenever the slots change. Rotation theta = k * PI/4
 // shows slot k in the top row and slot k-1 in the bottom row.
-import { gl, updateTex } from './gl.js?v=20260925190902';
-import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925190902';
-import { SYMBOLS } from './data.js?v=20260925190902';
+import { gl, updateTex } from './gl.js?v=20260925194320';
+import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925194320';
+import { SYMBOLS } from './data.js?v=20260925194320';
 
 const SLOTS = 8, CELLPX = 96;
 const STEP = Math.PI * 2 / SLOTS;
@@ -28,6 +28,7 @@ export class SlotMachine {
     this.gold = this.panel('@gold', 176, 60);
     this.state = { hp: 25, maxHp: 25, gold: 0, spinEnabled: false, spinHover: false, spinLabel: 'SPIN' };
     this.press = 0;
+    this.drop = 0;                                                // 0 = in place, 1 = slid down out of view (merchant)
     this.shake = 0;
     this.time = 0;
     this.drawnState = '';
@@ -59,7 +60,8 @@ export class SlotMachine {
   matrix() {
     const { s, y } = this.base;
     const sh = this.shake > 0 ? (Math.sin(this.time * 70) * 0.03 * this.shake) : 0;
-    return trs(sh, y, 0, 0, 0, 0, s);
+    const d = this.drop * this.drop * (3 - 2 * this.drop);        // smoothstep
+    return trs(sh, y - d * 1.9 * s, 0, 0, 0, 0, s);
   }
 
   project(x, y, z) {
