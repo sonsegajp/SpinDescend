@@ -103,19 +103,53 @@ export function generate(floor, seed) {
       occupied.add(key(...guard));
     }
   }
-  // chests + merchant live in dead ends
-  const deadEnds = deadEndsAll.filter(([x, y]) => !occupied.has(key(x, y)) && dist[y * W + x] >= 3);
   const faceOpen = (x, y) => exits(x, y)[0] ?? 0;
+
+  // ---- merchant: one on EVERY floor, standing at the side of a corridor on the way to the
+  // stairs (you walk right past him). Prefer a cell every route to the stairs must cross,
+  // about two thirds of the way there.
+  {
+    const path = [[stairs.x, stairs.y]];
+    for (let [cx, cy] = [stairs.x, stairs.y]; dist[cy * W + cx] > 0;) {
+      const d = [0, 1, 2, 3].find(k => at(cx + DX[k], cy + DY[k]) && dist[(cy + DY[k]) * W + cx + DX[k]] === dist[cy * W + cx] - 1);
+      cx += DX[d]; cy += DY[d];
+      path.push([cx, cy]);
+    }
+    const reachesStairs = (bx, by) => {             // is the stairs still reachable with (bx, by) walled off?
+      const seenB = new Uint8Array(W * H), q = [[start.x, start.y]];
+      seenB[start.y * W + start.x] = 1;
+      for (let qi = 0; qi < q.length; qi++) {
+        const [x, y] = q[qi];
+        if (x === stairs.x && y === stairs.y) return true;
+        for (let k = 0; k < 4; k++) {
+          const nx = x + DX[k], ny = y + DY[k];
+          if (at(nx, ny) && !(nx === bx && ny === by) && !seenB[ny * W + nx]) { seenB[ny * W + nx] = 1; q.push([nx, ny]); }
+        }
+      }
+      return false;
+    };
+    let best = null;
+    for (let i = 2; i < path.length - 2; i++) {
+      const [px, py] = path[i];
+      const ex = exits(px, py);
+      if (occupied.has(key(px, py)) || ex.length !== 2) continue;
+      const score = Math.abs(i - path.length * 0.35) + (reachesStairs(px, py) ? 1000 : 0);
+      if (!best || score < best.score) best = { score, px, py, ex };
+    }
+    if (best) {
+      const side = R.pick([0, 1, 2, 3].filter(k => !best.ex.includes(k)));   // the wall he stands against
+      occupied.add(key(best.px, best.py));
+      entities.push({ type: 'merchant', wayside: true, x: best.px, y: best.py, side, face: (side + 2) % 4 });
+    }
+  }
+
+  // chests live in dead ends
+  const deadEnds = deadEndsAll.filter(([x, y]) => !occupied.has(key(x, y)) && dist[y * W + x] >= 3);
   const nChests = Math.min(deadEnds.length, 1 + (R.chance(0.6) ? 1 : 0) + (floor >= 4 && R.chance(0.4) ? 1 : 0));
   for (let i = 0; i < nChests; i++) {
     const [x, y] = deadEnds.splice(Math.floor(R() * deadEnds.length), 1)[0];
     occupied.add(key(x, y));
     entities.push({ type: 'chest', x, y, face: faceOpen(x, y), mimic: floor > 1 && R.chance(0.25) });
-  }
-  if (floor >= 2 && deadEnds.length && R.chance(0.8)) {
-    const [x, y] = deadEnds.splice(Math.floor(R() * deadEnds.length), 1)[0];
-    occupied.add(key(x, y));
-    entities.push({ type: 'merchant', x, y, face: faceOpen(x, y) });
   }
   // enemies block corridors
   const nEnemies = Math.min(3 + floor, 9);

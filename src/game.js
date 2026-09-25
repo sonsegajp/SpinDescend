@@ -59,6 +59,23 @@ export class Game {
     }
     if (q.has('reward')) this.offerCards(3, 'chest');
     if (q.has('bag')) { this.bagReturn = this.state; this.state = 'bag'; }
+    if (q.has('merchant')) {
+      const m = this.entities.find(e => e.wayside);
+      const d = m && this.level.exits(m.x, m.y)[0];
+      if (m) {
+        this.px = m.x + DX[d]; this.py = m.y + DY[d]; this.dir = (d + 2) % 4;
+        this.cam = { x: this.px * CELL, z: this.py * CELL, yaw: dirYaw(this.dir), bob: 0 };
+        this.reveal();
+        this.step(this.dir);
+        // ?trade: open his shop, then walk on
+        const trade = () => {
+          if (!this.prompt || this.move) { this.later(0.2, trade); return; }
+          this.choose('use');
+          this.later(1.0, () => this.leaveShop());
+        };
+        if (q.has('trade')) this.later(0.5, trade);
+      }
+    }
     if (q.has('shop')) this.openShop({ x: 0, y: 0 });
   }
 
@@ -92,6 +109,7 @@ export class Game {
     this.loadFloor(1, this.runSeed + 1);
     this.fadeIn();
     this.ui.toast('Floor 1 - The Dungeon', this.time, '#e8c878', 2.6);
+    this.ui.toast('A goblin merchant trades on the way to the stairs', this.time, '#ffd24a', 3.2);
   }
 
   loadFloor(floor, seed, title = false) {
@@ -139,7 +157,9 @@ export class Game {
 
   anim(e, name, opts) { if (e && e.animator && e.animator.has(name)) e.animator.play(name, opts); }
 
-  entityAt(x, y) { return this.entities.find(e => e.x === x && e.y === y && e.alive !== false && !e.gone); }
+  // things that block a corridor (a wayside merchant stands aside and lets you pass)
+  entityAt(x, y) { return this.entities.find(e => e.x === x && e.y === y && e.alive !== false && !e.gone && !e.wayside); }
+  waysideAt(x, y) { return this.entities.find(e => e.wayside && e.x === x && e.y === y); }
 
   reveal() {
     const L = this.level;
@@ -310,6 +330,11 @@ export class Game {
   choose(rel) {
     const P = this.prompt;
     if (!P) return;
+    if (P.kind === 'wayside') {
+      if (rel === 'use') { this.prompt = null; this.openShop(P.ent); }
+      if (rel === 'back') { this.prompt = null; this.audio.play('click'); this.moveOn(); }
+      return;
+    }
     if (P.kind === 'chest' || P.kind === 'merchant') {
       if (rel === 'use') { this.prompt = null; this.interact(P.ent); return; }
       if (rel === 'back') {
@@ -336,7 +361,7 @@ export class Game {
   updatePrompt(keys, clicks) {
     const P = this.prompt;
     if (this.time - P.t0 < 0.12) return;
-    const use = P.kind === 'chest' || P.kind === 'merchant';
+    const use = P.kind === 'chest' || P.kind === 'merchant' || P.kind === 'wayside';
     for (const k of keys) {
       if (is(k, 'turnL') || is(k, 'strafeL')) this.choose('left');
       else if (is(k, 'turnR') || is(k, 'strafeR')) this.choose('right');
@@ -359,7 +384,21 @@ export class Game {
       return;
     }
     if (!onStairs) this.stairsDeclined = false;
+    const m = this.waysideAt(this.px, this.py);
+    if (m) {
+      this.resumeDir = this.dir;
+      if (this.dir !== m.side) { this.dir = m.side; this.startTurn(0.25); }
+      this.ask('wayside', m);
+      return;
+    }
     this.autoAt = this.time + 0.06;
+  }
+
+  // done with the wayside merchant: face the way you were walking and carry on
+  moveOn() {
+    if (this.resumeDir !== undefined && this.resumeDir !== this.dir) { this.dir = this.resumeDir; this.startTurn(0.25); }
+    this.resumeDir = undefined;
+    this.autoAt = this.time + 0.3;
   }
 
   interact(ent) {
@@ -926,12 +965,18 @@ export class Game {
 
   // =============================================================== merchant
   openShop(m) {
-    const ids = this.rollCards(3, 0.4);
-    this.shop = { m, items: ids.map(id => ({ id, price: CARD_PRICE[CARDS[id].rarity] + Math.floor(this.floor / 2) * 2, sold: false })) };
+    if (!m.stock) m.stock = this.rollCards(3, 0.4).map(id => ({ id, price: CARD_PRICE[CARDS[id].rarity] + Math.floor(this.floor / 2) * 2, sold: false }));
+    this.shop = { m, items: m.stock.filter(it => !it.sold) };
     this.cards.show(this.shop.items.map(it => ({ id: it.id, price: it.price })), this.time, 'below');
     this.cards.keyFocus = -1;
     this.state = 'shop';
     this.audio.play('card');
+  }
+
+  leaveShop() {
+    this.cards.hide(); this.state = 'explore'; this.audio.play('click');
+    if (this.shop.m.wayside) this.moveOn();
+    else { this.dir = (this.dir + 2) % 4; this.startTurn(0.3); this.pendingStep = this.dir; }
   }
 
   updateShop(keys, clicks) {
@@ -948,10 +993,7 @@ export class Game {
       this.ui.toast(`Bought ${CARDS[it.id].name}`, this.time, RARITY[CARDS[it.id].rarity].color);
     };
     const act = (id) => {
-      if (id === 'leave') {
-        this.cards.hide(); this.state = 'explore'; this.audio.play('click');
-        this.dir = (this.dir + 2) % 4; this.startTurn(0.3); this.pendingStep = this.dir;
-      }
+      if (id === 'leave') this.leaveShop();
       if (id === 'heal') {
         if (this.player.gold < 6 || this.player.hp >= this.player.maxHp) { this.audio.play('deny'); return; }
         this.player.gold -= 6; this.slot.state.gold = this.player.gold;
@@ -1008,6 +1050,7 @@ export class Game {
       this.loadFloor(f, this.runSeed + f * 7919);
       const b = BIOMES[biomeForFloor(f)];
       this.ui.toast(`Floor ${f} - The ${b.name}`, this.time, '#e8c878', 2.6);
+      if (this.entities.some(e => e.type === 'merchant')) this.ui.toast('A goblin merchant trades on the way to the stairs', this.time, '#ffd24a', 3.2);
       this.fadeIn();
     } };
     this.state = 'transition';
@@ -1183,8 +1226,17 @@ export class Game {
   drawMerchant(mc, now) {
     const gob = this.a.models.goblin;
     const yaw = Math.atan2(this.cam.x - mc.x * CELL, this.cam.z - mc.y * CELL);
-    const idle = Math.sin(now * 2);
     const mats = mc.animator ? mc.animator.matrices() : null;
+    if (mc.wayside) {
+      const bx = mc.x * CELL + DX[mc.side] * 0.6, bz = mc.y * CELL + DY[mc.side] * 0.6;
+      const ax = DX[(mc.side + 1) % 4], az = DY[(mc.side + 1) % 4];         // along the wall
+      const gy = Math.atan2(this.cam.x - bx, this.cam.z - bz);
+      this.R.drawModel(gob, trs(bx, 0, bz, gy, 0, 0, ENEMY_SCALE * 0.95), { mats, hide: new Set(['weapon']), tint: [0.92, 1.05, 0.95] });
+      const cx = bx + ax * 0.62 + DX[mc.side] * 0.08, cz = bz + az * 0.62 + DY[mc.side] * 0.08;
+      this.R.drawModel(this.a.models.crate, trs(cx, 0, cz, gy, 0, 0, 0.8));
+      this.R.drawModel(this.a.models.lantern, trs(cx, -1.62, cz, 0, 0, 0, 1));
+      return;
+    }
     this.R.drawModel(gob, trs(mc.x * CELL, 0, mc.y * CELL, yaw, 0, 0, ENEMY_SCALE * 0.95), { mats, hide: new Set(['weapon']), tint: [0.92, 1.05, 0.95] });
     const fx = Math.sin(yaw), fz = Math.cos(yaw);
     this.R.drawModel(this.a.models.crate, trs(mc.x * CELL + fx * 0.62 - fz * 0.35, 0, mc.y * CELL + fz * 0.62 + fx * 0.35, yaw, 0, 0, 0.8));
@@ -1305,13 +1357,14 @@ export class Game {
     const P = this.prompt;
     const top = this.slot.screenTop;
     const pop = clamp((now - P.t0) / 0.18, 0, 1);
-    if (P.kind === 'chest' || P.kind === 'merchant') {
+    if (P.kind === 'chest' || P.kind === 'merchant' || P.kind === 'wayside') {
       const t = P.kind === 'chest' ? 'A chest blocks the way.' : 'A goblin merchant waves you over.';
       U.text(t, W / 2, top * 0.2, { size: 14, align: 'center', color: '#ffd878', alpha: pop });
-      const bw = 150;
-      U.button('go:use', P.kind === 'chest' ? 'Open it  [W]' : 'Trade  [W]', W / 2 - bw - 6, top - 34, bw, 22, ptr,
+      if (P.kind === 'wayside') U.text(`You have ${this.player.gold} gold`, W / 2, top * 0.2 + 14, { size: 10, align: 'center', color: '#ffd24a', alpha: pop, bold: false });
+      const bw = 150, by = P.kind === 'wayside' ? top * 0.2 + 22 : top - 34;     // keep the merchant's face clear
+      U.button('go:use', P.kind === 'chest' ? 'Open it  [W]' : 'Trade  [W]', W / 2 - bw - 6, by, bw, 22, ptr,
         { size: 12, fill: '#6a1c22', hotFill: '#8a262e' });
-      U.button('go:back', 'Turn back  [S]', W / 2 + 6, top - 34, bw, 22, ptr, { size: 12 });
+      U.button('go:back', P.kind === 'wayside' ? 'Keep going  [S]' : 'Turn back  [S]', W / 2 + 6, by, bw, 22, ptr, { size: 12 });
       return;
     }
     const opts = this.choices();
@@ -1524,8 +1577,8 @@ export class Game {
     }
     if (this.explored.has(`${L.stairs.x},${L.stairs.y}`)) { g.fillStyle = '#5a9aff'; g.fillRect(x0 + L.stairs.x * cs, y0 + L.stairs.y * cs, cs, cs); }
     for (const e of this.entities) {
-      if (e.gone || e.alive === false || !this.explored.has(`${e.x},${e.y}`)) continue;
-      g.fillStyle = e.type === 'enemy' ? '#e04040' : e.type === 'chest' ? '#e0b040' : '#60d060';
+      if (e.gone || e.alive === false || (!e.wayside && !this.explored.has(`${e.x},${e.y}`))) continue;   // the merchant is always marked
+      g.fillStyle = e.type === 'enemy' ? '#e04040' : e.type === 'chest' ? '#e0b040' : '#60e060';
       g.fillRect(x0 + e.x * cs + 1, y0 + e.y * cs + 1, cs - 2, cs - 2);
     }
     g.fillStyle = '#ffffff';
