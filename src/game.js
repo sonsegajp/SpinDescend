@@ -934,8 +934,10 @@ export class Game {
     const C = this.combat, e = C.e, P = this.player;
     C.phase = 'enemyEnd';
     C.nextAt = this.time + 0.45;
+    const bonus = C.bonusStrike;              // the free hit on a paralyzed player: no specials (they'd re-trigger
+    C.bonusStrike = false;                    // on the same turn number - a scream would chain forever)
     let dmg = e.atk;
-    if (e.def.charge && C.turn % e.def.charge === 0) {
+    if (!bonus && e.def.charge && C.turn % e.def.charge === 0) {
       dmg *= 2;
       this.ui.toast(`The ${e.def.name} charges!`, this.time, '#ff8a6a');
     }
@@ -954,6 +956,7 @@ export class Game {
     } else this.audio.play('block');
     if (P.hp <= 5) this.rescue();
     if (P.hp <= 0) { this.playerDies(); return; }
+    if (bonus) return;
     // specials
     if (e.def.curse && C.turn % e.def.curse === 0) {
       C.tempBag.push('skull');
@@ -984,6 +987,7 @@ export class Game {
     const C = this.combat;
     if (C.paralyzed) {                                       // frozen by a scream: the foe acts again
       C.paralyzed = false;
+      C.bonusStrike = true;
       this.ui.toast('Paralyzed - you can\'t spin!', this.time, '#e8c8ff');
       C.phase = 'enemy';
       C.nextAt = this.time + 1.1;
