@@ -1,12 +1,12 @@
 // assets.js - loads every model, texture, card, icon and UI image the game uses.
-import { parseSDM, Model } from './gl.js';
-import { parseSDA } from './anim.js';
-import { CARDS, SYMBOLS } from './data.js';
+import { parseSDM, Model } from './gl.js?v=20260925102606';
+import { parseSDA } from './anim.js?v=20260925102606';
+import { CARDS, SYMBOLS } from './data.js?v=20260925102606';
 
 export const BASE = (window.SD_ASSETS || '../assets/');
 // local dev: never trust the HTTP cache (assets are re-exported from Blender constantly)
 const DEV = ['localhost', '127.0.0.1'].includes(location.hostname);
-const V = DEV ? '?v=' + Date.now() : '';
+const V = DEV ? '?v=' + Date.now() : (window.SD_BUILD ? '?v=' + window.SD_BUILD : '');
 
 export const ANIMATED = ['knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mimic',
   'redead', 'moblin', 'keese', 'darknut', 'tonberry', 'shadow', 'soldier'];

@@ -1,16 +1,16 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js';
-import { Renderer, invert } from './render.js';
-import { SlotMachine } from './slot.js';
-import { CardView } from './cards.js';
-import { UI, SERIF } from './ui.js';
-import { Animator } from './anim.js';
-import { is } from './input.js';
-import { generate, build, CELL, DX, DY } from './level.js';
+import { gl } from './gl.js?v=20260925102606';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925102606';
+import { Renderer, invert } from './render.js?v=20260925102606';
+import { SlotMachine } from './slot.js?v=20260925102606';
+import { CardView } from './cards.js?v=20260925102606';
+import { UI, SERIF } from './ui.js?v=20260925102606';
+import { Animator } from './anim.js?v=20260925102606';
+import { is } from './input.js?v=20260925102606';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260925102606';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, KNIGHT_BAG, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925102606';
 
 const EYE = 0.84, BACK = 0.8, PITCH = -0.19, FOV = 58 * Math.PI / 180;
 const ENEMY_SCALE = 1.18;
@@ -42,6 +42,15 @@ export class Game {
 
   // test hooks: ?start, ?floor=N, ?face=0-3, ?combat, ?reward, ?shop, ?skin=paladin, ?map
   debug(q) {
+    if (q.has('autospin')) {                  // ?autospin: play fights by itself and log them (headless balance checks)
+      this.autoSpin = true;
+      window.__log = [];
+      const toast = this.ui.toast.bind(this.ui);
+      this.ui.toast = (str, ...r) => {
+        window.__log.push(`[t${this.combat ? this.combat.turn : '-'} hp${this.player ? this.player.hp : '-'}] ${str}`);
+        return toast(str, ...r);
+      };
+    }
     if (q.get('skin') === 'paladin') this.skin = 'paladin';
     if (q.get('seed')) this.fixedSeed = parseInt(q.get('seed'), 10);
     if (q.has('title')) return;
@@ -191,6 +200,10 @@ export class Game {
   later(delay, fn) { (this.timers || (this.timers = [])).push({ at: this.time + delay, fn }); }
 
   update(dt, now) {
+    if (this.autoSpin && this.combat && this.combat.phase === 'ready' && this.slot.state.spinEnabled && this.player.hp > 0) {
+      this.autoSpinAt = this.autoSpinAt || now + 0.4;
+      if (now >= this.autoSpinAt) { this.autoSpinAt = 0; window.__log.push(`-- spin (turn ${this.combat.turn + 1})`); this.spinReels(); }
+    }
     this.time = now;
     if (this.timers && this.timers.length) {
       const due = this.timers.filter(t => t.at <= now);
@@ -936,7 +949,7 @@ export class Game {
     C.nextAt = this.time + 0.45;
     const bonus = C.bonusStrike;              // the free hit on a paralyzed player: no specials (they'd re-trigger
     C.bonusStrike = false;                    // on the same turn number - a scream would chain forever)
-    let dmg = e.atk;
+    let dmg = bonus ? Math.ceil(e.atk / 2) : e.atk;     // the paralysis hit is a lesser blow
     if (!bonus && e.def.charge && C.turn % e.def.charge === 0) {
       dmg *= 2;
       this.ui.toast(`The ${e.def.name} charges!`, this.time, '#ff8a6a');

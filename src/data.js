@@ -207,7 +207,7 @@ export const ENEMIES = {
   cultist:  { name: 'Cultist',  model: 'cultist',  hp: 8,  atk: 2, curse: 2, gold: [3, 6], note: 'Curses your reels.' },
   mimic:    { name: 'Mimic',    model: 'mimic',    hp: 12, atk: 3, gold: [8, 12], note: 'It was never a chest.' },
   // second wave (PS1-native)
-  redead:   { name: 'ReDead',   model: 'redead',   hp: 14, atk: 2, scream: 3, gold: [4, 7], note: 'Its scream paralyzes you.' },
+  redead:   { name: 'ReDead',   model: 'redead',   hp: 11, atk: 2, scream: 4, gold: [4, 7], note: 'Every 4th turn its scream paralyzes you.' },
   moblin:   { name: 'Moblin',   model: 'moblin',   hp: 16, atk: 3, charge: 3, gold: [5, 8], note: 'Charges every third turn.' },
   keese:    { name: 'Keese',    model: 'keese',    hp: 4,  atk: 1, dodge: 0.3, gold: [1, 3], note: 'Flits out of the way of blows.' },
   darknut:  { name: 'Darknut',  model: 'darknut',  hp: 18, atk: 3, armor: 2, gold: [7, 11], note: 'Heavy armour blocks 2 damage.' },

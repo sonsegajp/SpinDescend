@@ -1,11 +1,11 @@
 // main.js - boot: display canvas + offscreen 2D overlay, asset loading with a
 // progress bar, the frame pipeline, then the game loop.
-import { initGL } from './gl.js';
-import { loadAll } from './assets.js';
-import { Game } from './game.js';
-import { Input } from './input.js';
-import { Audio } from './audio.js';
-import { Pipeline } from './frame.js';
+import { initGL } from './gl.js?v=20260925102606';
+import { loadAll } from './assets.js?v=20260925102606';
+import { Game } from './game.js?v=20260925102606';
+import { Input } from './input.js?v=20260925102606';
+import { Audio } from './audio.js?v=20260925102606';
+import { Pipeline } from './frame.js?v=20260925102606';
 
 const glc = document.getElementById('gl');
 const ovc = document.createElement('canvas');           // 2D overlay, composited on the GPU
@@ -79,6 +79,12 @@ async function boot() {
       // ?warp=N simulates N seconds instantly (headless screenshots)
       const warp = parseFloat(q.get('warp') || '0');
       for (let i = 0; i < warp * 60; i++) { tSim += 1 / 60; game.update(1 / 60, tSim); }
+    }
+    if (q.has('autospin')) {                          // dump the fight log into the page (read with --dump-dom)
+      const d = document.createElement('pre');
+      d.id = 'fightlog';
+      d.textContent = (window.__log || []).join('\n');
+      document.body.appendChild(d);
     }
     const offset = tSim - performance.now() / 1000;
     const hold = q.has('hold');                          // ?hold freezes the game right after the warp
