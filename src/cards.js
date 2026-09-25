@@ -1,8 +1,8 @@
 // cards.js - 3D upgrade cards (card mesh + concept card art) for loot rewards,
 // the merchant, and the title's character plate. Cards fly in face-down, flip,
 // hover-tilt toward the pointer, and fly into the reels when chosen.
-import { gl, texFromImage } from './gl.js?v=20260925102606';
-import { perspective, lookAt, mul, trs, xform, easeOutBack, easeOut, clamp } from './math.js?v=20260925102606';
+import { gl, texFromImage } from './gl.js?v=20260925153851';
+import { perspective, lookAt, mul, trs, xform, easeOutBack, easeOut, clamp } from './math.js?v=20260925153851';
 
 export class CardView {
   constructor(renderer, assets) {
@@ -56,6 +56,14 @@ export class CardView {
   }
 
   hide() { this.active = false; this.cards = []; }
+
+  // where card i's centre sits, as fractions of the screen - effects burst from here
+  screenFrac(i) {
+    const c = this.cards[i];
+    if (!c) return [0.5, 0.5];
+    const aspect = this.W / this.H;
+    return [0.5 + (c.x / (this.hh * aspect)) * 0.5, 0.5 - (this.centerY / this.hh) * 0.5];
+  }
 
   pick(i, now) {
     const c = this.cards[i];

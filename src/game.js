@@ -1,16 +1,17 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260925102606';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925102606';
-import { Renderer, invert } from './render.js?v=20260925102606';
-import { SlotMachine } from './slot.js?v=20260925102606';
-import { CardView } from './cards.js?v=20260925102606';
-import { UI, SERIF } from './ui.js?v=20260925102606';
-import { Animator } from './anim.js?v=20260925102606';
-import { is } from './input.js?v=20260925102606';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260925102606';
+import { gl } from './gl.js?v=20260925153851';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925153851';
+import { Renderer, invert } from './render.js?v=20260925153851';
+import { SlotMachine } from './slot.js?v=20260925153851';
+import { CardView } from './cards.js?v=20260925153851';
+import { UI, SERIF } from './ui.js?v=20260925153851';
+import { Animator } from './anim.js?v=20260925153851';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260925153851';
+import { is } from './input.js?v=20260925153851';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260925153851';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, KNIGHT_BAG, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925102606';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925153851';
 
 const EYE = 0.84, BACK = 0.8, PITCH = -0.19, FOV = 58 * Math.PI / 180;
 const ENEMY_SCALE = 1.18;
@@ -26,6 +27,7 @@ export class Game {
     this.slot = new SlotMachine(this.R, assets);
     this.cards = new CardView(this.R, assets);
     this.ui = new UI(overlay);
+    this.fx = new FX();
     this.time = 0;
     this.skin = 'classic';
     this.paladinTex = null;
@@ -79,6 +81,14 @@ export class Game {
       if (q.has('spin')) this.later(0.6, () => this.spinReels());
     }
     if (q.has('reward')) this.offerCards(3, 'chest');
+    if (q.get('pick')) this.later(1.0, () => this.pickReward(parseInt(q.get('pick'), 10)));      // ?reward&pick=i
+    if (q.has('fxtest')) this.later(0.9, () => {                                                // ?fxtest: every primitive
+      this.fx.glow(120, 120, 40, 5, '#ff8a3a');
+      this.fx.ring(260, 120, 20, 30, 5, '#8ad8ff', 3);
+      EVENTS.card(this.fx, 400, 130, this.fxCtx(null), '#4c5fe0', 2);
+      this.fx.burst(540, 120, { n: 20, life: [4, 5], speed: [5, 20], shape: 'star', col: '#ffe84a', add: true });
+      this.fx.flash('#ff0000', 5, 0.3);
+    });
     if (q.has('bag')) { this.bagReturn = this.state; this.state = 'bag'; this.bagPage = q.get('bag') || 'reels'; }
     if (q.has('merchant')) {
       const m = this.entities.find(e => e.wayside);
@@ -205,6 +215,7 @@ export class Game {
       if (now >= this.autoSpinAt) { this.autoSpinAt = 0; window.__log.push(`-- spin (turn ${this.combat.turn + 1})`); this.spinReels(); }
     }
     this.time = now;
+    this.fx.update(dt);
     if (this.timers && this.timers.length) {
       const due = this.timers.filter(t => t.at <= now);
       this.timers = this.timers.filter(t => t.at > now);
@@ -616,6 +627,7 @@ export class Game {
   applyLine(b) {
     const C = this.combat, P = this.player, L = LINE_BONUS[b.line];
     this.slot.highlightCells(b.cells);
+    EVENTS.line(this.fx, b.cells.map(([r, c]) => this.slot.reelAnchor(c, r)), '#ffe84a', this.fxCtx(null));
     let desc = L.desc;
     const roll = b.line === 'dice' ? [1, 2, 3].map(() => 1 + Math.floor(Math.random() * 6)) : null;
     if (roll) desc = `rolled ${roll.join(' + ')} = ${roll[0] + roll[1] + roll[2]} gold, and +10% Luck`;
@@ -656,6 +668,7 @@ export class Game {
   applySpecial(b) {
     const C = this.combat, P = this.player, S = SPECIAL_LINE[b.special], e = C.e;
     this.slot.highlightCells(b.cells);
+    EVENTS.line(this.fx, b.cells.map(([r, c]) => this.slot.reelAnchor(c, r)), '#ffe84a', this.fxCtx(null));
     this.banner(`${S.name}!`, `3 ${SYMBOLS[b.special].name}s in a row: ${S.desc}`, S.color);
     this.audio.play('jackpot');
     this.slot.shake = 0.8;
@@ -698,6 +711,7 @@ export class Game {
   applyScatter(b) {
     const C = this.combat, P = this.player, S = SCATTER_BONUS[b.scatter];
     this.slot.highlightCells(b.cells);
+    EVENTS.line(this.fx, b.cells.map(([r, c]) => this.slot.reelAnchor(c, r)), '#ffe84a', this.fxCtx(null));
     const chance = Math.min(1, S.chance + P.luck);
     const what = `${b.cells.length} ${FAMILY_NAME[b.scatter]}`;
     if (Math.random() >= chance) {
@@ -749,25 +763,75 @@ export class Game {
     if (C.charm && !s.charm && Math.random() < 0.25) times++;
     if (C.blessed) times++;
     if (times > 1) this.ui.float('x2!', ax + 22, ay - 20, '#7aff8a', this.time, { size: 14 });
-    for (let t = 0; t < times; t++) this.applySymbol(id, s, ax, ay, t);
-    C.nextAt = this.time + (times > 1 ? 0.5 : 0.34);
+    const travel = RECIPES[id] ? RECIPES[id].travel : 0;
+    for (let t = 0; t < times; t++) {
+      const go = () => { if (this.combat === C) this.launchSymbol(id, ax, ay); };
+      if (t === 0) go(); else this.later(t * 0.2, go);
+      this.later(t * 0.2 + travel, () => { if (this.combat === C && this.player.hp > 0) this.applySymbol(id, s, ax, ay, t); });
+    }
+    C.nextAt = this.time + travel + (times - 1) * 0.2 + (times > 1 ? 0.5 : 0.34);
   }
 
+  // ---- card / symbol effects: a symbol's icon flies to its target and lands with its own burst + sound
+  fxCtx(id) {
+    const sym = SYMBOLS[id];
+    return {
+      play: n => this.audio.play(n),
+      icon: sym ? this.a.icons48[sym.icon] : null,
+      shake: k => { this.slot.shake = Math.max(this.slot.shake || 0, k); this.camShake = Math.max(this.camShake || 0, k); },
+    };
+  }
+
+  fxTarget(t, ax, ay) {
+    return t === 'enemy' ? this.enemyScreen(0.55) : t === 'hp' ? this.slot.hpAnchor() : t === 'gold' ? this.slot.goldAnchor() : [ax, ay];
+  }
+
+  launchSymbol(id, ax, ay) {
+    const rec = RECIPES[id];
+    if (rec) rec.launch(this.fx, [ax, ay], this.fxTarget(rec.target, ax, ay), this.fxCtx(id));
+  }
+
+  fxEvent(name, x, y) { EVENTS[name](this.fx, x, y, this.fxCtx(null)); }
+
+  cardFx(i, id) {
+    const r = CARDS[id].rarity;
+    const tier = ['common', 'uncommon', 'rare', 'epic', 'legendary'].indexOf(r);
+    const [fx, fy] = this.cards.screenFrac(i);
+    EVENTS.card(this.fx, fx * this.W, fy * this.H, this.fxCtx(null), RARITY[r].color, Math.max(0, tier));
+  }
+
+  sfx(name) { if (!this.quietSfx) this.audio.play(name); }
+
   applySymbol(id, s, ax, ay, rep) {
+    const rec = RECIPES[id];
+    this.quietSfx = !!rec;                    // the recipe plays this symbol's own sounds instead
+    const I = { dmg: 0, pierce: !!s.pierce, chain: this.combat.chain, enemy: this.enemyScreen(0.55), hp: this.slot.hpAnchor() };
+    this.applySymbolInner(id, s, ax, ay, rep, I);
+    this.quietSfx = false;
+    if (!rec || !this.combat) return;
+    if (I.miss) { this.fxEvent('miss', ...I.enemy); return; }
+    const [tx, ty] = this.fxTarget(rec.target, ax, ay);
+    rec.impact(this.fx, tx, ty, this.fxCtx(id), I);
+    if (I.crit && rec.target === 'enemy') this.fxEvent('crit', tx, ty);
+    if (I.stun && id !== 'hammer') this.fxEvent('stun', ...this.enemyScreen(1.0));
+  }
+
+  applySymbolInner(id, s, ax, ay, rep, I) {
     const C = this.combat, P = this.player, e = C.e;
     const oy = rep * -14;
     if (s.dmg && e.alive && e.def.dodge && Math.random() < e.def.dodge) {
       this.ui.float('Miss!', ...this.enemyScreen(0.8), '#c8c8d8', this.time, { size: 14 });
-      this.audio.play('bump');
+      this.sfx('bump');
+      I.miss = true;
     } else if (s.dmg && e.alive) {
       let dmg = (s.dmgRoll ? s.dmgRoll[0] + Math.floor(Math.random() * (s.dmgRoll[1] - s.dmgRoll[0] + 1)) : s.dmg) + P.might;
       if (s.phalanx) dmg += C.grid.flat().filter(x => x === id).length - 1;
-      if (s.beam && P.hp >= P.maxHp) { dmg += s.beam; this.ui.float('Sword beam!', ax, ay - 30, '#a8e8ff', this.time, { size: 13 }); }
-      if (s.trigger && Math.random() < s.trigger) { dmg += 3; this.ui.float('Trigger!', ax, ay - 30, '#ffd24a', this.time, { size: 13 }); }
+      if (s.beam && P.hp >= P.maxHp) { dmg += s.beam; I.beam = true; this.ui.float('Sword beam!', ax, ay - 30, '#a8e8ff', this.time, { size: 13 }); }
+      if (s.trigger && Math.random() < s.trigger) { dmg += 3; I.trigger = true; this.ui.float('Trigger!', ax, ay - 30, '#ffd24a', this.time, { size: 13 }); }
       if ((s.aoe || s.burn) && P.relics.has('fire_materia')) dmg += 2;
       let limit = false;
       if (s.limit) { P.limitCount = (P.limitCount || 0) + 1; limit = P.limitCount % s.limit === 0; }
-      if (limit) { dmg *= 3; this.ui.float('LIMIT BREAK!', ax, ay - 34, '#ff7a3a', this.time, { size: 15 }); }
+      if (limit) { dmg *= 3; I.limit = true; this.ui.float('LIMIT BREAK!', ax, ay - 34, '#ff7a3a', this.time, { size: 15 }); }
       if (s.aoe) { dmg += 2 * P.blast; if (C.chain) dmg *= 2; }
       let crit = false;
       if (C.frenzy || (s.crit && Math.random() < s.crit) || (s.opener && e.hp >= e.maxHp)) { dmg *= 2; crit = true; }
@@ -775,8 +839,10 @@ export class Game {
         C.enemyBlocked = true;
         dmg = Math.max(0, dmg - e.def.armor);
         this.ui.float('Block', ...this.enemyScreen(0.5), '#b8c8ff', this.time, { size: 12, dy: -18 });
+        this.fxEvent('block', ...this.enemyScreen(0.5));
       }
       if (s.pierce && e.def.armor) this.ui.float('Cleave!', ...this.enemyScreen(0.5), '#ffb08a', this.time, { size: 12, dy: -18 });
+      I.crit = crit; I.dmg = dmg;
       for (let h = 0; h < (s.hits || 1) && e.alive; h++) this.damageEnemy(dmg, crit);
       if (dmg > 0) C.dealt++;
       if (s.burn && e.alive) {
@@ -785,9 +851,11 @@ export class Game {
       }
       if (s.stun && e.alive && Math.random() < s.stun) {
         C.stun = true;
+        I.stun = true;
         this.ui.float('Stunned!', ...this.enemyScreen(1.05), '#ffe070', this.time, { size: 14 });
       }
       if (s.execute && e.alive && e.hp <= e.maxHp * s.execute) {
+        I.execute = true;
         this.ui.float('Reaped!', ...this.enemyScreen(1.05), '#c8a0ff', this.time, { size: 16 });
         this.damageEnemy(e.hp, true);
       }
@@ -797,20 +865,20 @@ export class Game {
       let a = s.armor + (s.guard && C.swordsLanded ? s.guard : 0);
       P.armor += a;
       this.ui.float(`+${a} Armor`, ax, ay - 10 + oy, '#9ab8ff', this.time, { size: 13 });
-      this.audio.play('block');
+      this.sfx('block');
     }
     if (s.heal) this.heal(s.heal, ax, ay + oy);
     if (s.vamp) C.vials += s.vamp;
     if (s.gold) {
       let g = s.gold;
-      if (s.jackpot && Math.random() < s.jackpot) g = 5;
+      if (s.jackpot && Math.random() < s.jackpot) { g = 5; I.jackpot = true; }
       if (FAMILY[id] === 'coin') g += P.fortune;
       if (C.doubleGold) g *= 2;
       const [gx, gy] = this.slot.goldAnchor();
       this.player.gold += g;
       this.slot.state.gold = P.gold;
       this.ui.float(`+${g}`, gx, gy - 14 + oy, '#ffd24a', this.time, { size: 16 });
-      this.audio.play('coin');
+      this.sfx('coin');
     }
     if (s.loot) {
       C.loot++;
@@ -826,7 +894,7 @@ export class Game {
       this.slot.state.hp = P.hp;
       const [hx, hy] = this.slot.hpAnchor();
       this.ui.float(`-${s.self}`, hx, hy + oy, '#ff5a5a', this.time, { size: 16 });
-      this.audio.play('curse');
+      this.sfx('curse');
       this.hurtFlash = this.time;
       this.rescue();
     }
@@ -841,8 +909,9 @@ export class Game {
     if (s.luck) {
       if (Math.random() < 0.35 + P.luck) {
         C.freeSpin = true;
+        I.lucky = true;
         this.ui.float('Lucky! Free spin', ax, ay - 20 + oy, '#7aff8a', this.time, { size: 12 });
-        this.audio.play('luck');
+        this.sfx('luck');
       } else this.ui.float('Luck', ax, ay - 12 + oy, '#9ad89a', this.time, { size: 11 });
     }
     if (P.hp <= 0 && !this.rescue()) this.playerDies();
@@ -856,7 +925,7 @@ export class Game {
       P.hp = Math.min(P.maxHp, Math.max(P.hp, 0) + 10);
       this.slot.state.hp = P.hp;
       this.ui.toast('A fairy flies out of the bottle! +10 HP', this.time, '#ffb0f0', 2.6);
-      this.audio.play('heal');
+      this.fxEvent('fairy', ...this.slot.hpAnchor());
       return true;
     }
     if (P.hp <= 0 && P.relics.has('phoenix_down')) {
@@ -864,7 +933,7 @@ export class Game {
       P.hp = Math.ceil(P.maxHp / 2);
       this.slot.state.hp = P.hp;
       this.ui.toast('The Phoenix Down flares - you rise again!', this.time, '#ffb060', 2.6);
-      this.audio.play('win');
+      this.fxEvent('phoenix', ...this.slot.hpAnchor());
       return true;
     }
     return P.hp > 0;
@@ -887,7 +956,7 @@ export class Game {
     const [x, y] = this.enemyScreen(0.85);
     this.ui.float(dmg > 0 ? `-${dmg}${crit ? '!' : ''}` : '0', x + (Math.random() - 0.5) * 20, y, crit ? '#ffea4a' : '#ff4a4a',
       this.time, { size: crit ? 24 : 19 });
-    this.audio.play(crit ? 'crit' : 'hit');
+    this.sfx(crit ? 'crit' : 'hit');
     if (e.hp <= 0 && e.alive) this.killEnemy();
   }
 
@@ -898,7 +967,7 @@ export class Game {
     this.slot.state.hp = P.hp;
     const [hx, hy] = this.slot.hpAnchor();
     this.ui.float(`+${P.hp - before || 0}`, hx, hy, '#6aff7a', this.time, { size: 16 });
-    this.audio.play('heal');
+    this.sfx('heal');
   }
 
   finishResolve() {
@@ -912,6 +981,7 @@ export class Game {
       e.flash = 0.7;
       const [x, y] = this.enemyScreen(0.6);
       this.ui.float(`-${e.poison} poison`, x, y, '#8aff6a', this.time, { size: 13 });
+      this.fxEvent('poisonTick', ...this.enemyScreen(0.55));
       if (e.hp <= 0) { this.killEnemy(); return; }
     }
     if (e.burn > 0) {
@@ -919,6 +989,7 @@ export class Game {
       e.flash = 0.7;
       const [x, y] = this.enemyScreen(0.7);
       this.ui.float('-2 burn', x + 14, y, '#ff8a3a', this.time, { size: 13 });
+      this.fxEvent('burnTick', ...this.enemyScreen(0.55));
       if (e.hp <= 0) { this.killEnemy(); return; }
     }
     C.enemyBlocked = false;
@@ -1017,6 +1088,8 @@ export class Game {
     e.deathT = this.time;
     this.anim(e, 'death', { fade: 0.06, then: null });
     this.audio.play('enemydie');
+    this.audio.play('kill');
+    this.fxEvent('kill', ...this.enemyScreen(0.55));
     this.player.kills++;
     C.phase = 'won';
     C.nextAt = this.time + 1.9;
@@ -1164,7 +1237,7 @@ export class Game {
     if (!id) return;
     this.cards.pick(i, this.time);
     this.applyCard(id);
-    this.audio.play('pick');
+    this.cardFx(i, id);
     const kind = CARDS[id].type;
     this.ui.toast(kind === 'add' || kind === 'upgrade' ? `${CARDS[id].name} added to your reels` : `${CARDS[id].name}!`,
       this.time, RARITY[CARDS[id].rarity].color);
@@ -1213,7 +1286,8 @@ export class Game {
       it.sold = true;
       this.cards.pick(i, this.time);
       this.applyCard(it.id);
-      this.audio.play('buy');
+      this.audio.play('coin');
+      this.cardFx(i, it.id);
       this.ui.toast(`Bought ${CARDS[it.id].name}`, this.time, RARITY[CARDS[it.id].rarity].color);
     };
     const act = (id) => {
@@ -1574,7 +1648,7 @@ export class Game {
     if (this.state === 'stairs') this.drawStairsUI(now, ptr);
     if (this.state === 'bag') this.drawBag(now, ptr);
     if (this.showMap && this.state !== 'bag') this.drawMap();
-    if (this.state !== 'bag') U.drawFloats(now);
+    if (this.state !== 'bag') { this.fx.draw(g, W, H); U.drawFloats(now); }
     if (this.state === 'dead' || this.state === 'won') this.drawEnd(now, ptr);
     if (this.state === 'combat' && this.floor === 1 && this.player && this.player.kills === 0)
       U.text('3 in a row = a permanent bonus   3 anywhere = a bonus roll   TAB: reels + paytable', W / 2, 12, { size: 8, align: 'center', color: '#cfc2a8', alpha: 0.8, bold: false });
