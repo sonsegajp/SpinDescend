@@ -38,6 +38,42 @@ export const SYMBOLS = {
   dagger:       { name: 'Poison Dagger',    icon: 'dagger',       rarity: 'uncommon',  dmg: 1, poison: 1,      desc: 'Deal 1 damage. Apply 1 Poison.' },
 };
 
+// Paytable families: upgraded symbols count as their base symbol.
+export const FAMILY = {
+  sword: 'blade', sword2: 'blade', sword3: 'blade', sword4: 'blade', dagger: 'blade',
+  shield: 'shield', shield2: 'shield',
+  potion: 'potion', potion2: 'potion', vial: 'potion',
+  coin: 'coin', coin_copper: 'coin', coins: 'coin', coin_silver: 'coin', coin_gold: 'coin', coin_royal: 'coin',
+  chest: 'chest', mimic: 'chest',
+  clover: 'clover', charm: 'clover',
+  skull: 'skull', skull_cursed: 'skull',
+};
+export const FAMILY_NAME = { blade: 'Swords', shield: 'Shields', potion: 'Potions', coin: 'Coins', chest: 'Treasure',
+  clover: 'Clovers', skull: 'Curses' };
+export const FAMILY_ICON = { blade: 'sword', shield: 'shield', potion: 'potion', coin: 'coin', chest: 'chest',
+  clover: 'clover', skull: 'skull' };
+
+// 3 of a family across a row (either payline; Wildcards fill in): a permanent boost for the run.
+export const LINE_BONUS = {
+  blade:  { name: 'TRIPLE STRIKE',  color: '#ff7a5a', desc: '+1 Might: every hit deals +1 for the rest of the run', short: '+1 Might: every hit +1' },
+  shield: { name: 'FORTRESS',       color: '#8ab0ff', desc: '+1 Guard: start every spin with +1 Armor', short: '+1 Guard: +1 Armor each spin' },
+  potion: { name: 'VITALITY',       color: '#6aff8a', desc: '+3 Max HP and heal 5', short: '+3 Max HP, heal 5' },
+  coin:   { name: 'JACKPOT',        color: '#ffd24a', desc: 'Gold burst and +1 Fortune: every coin pays +1', short: 'Gold burst, +1 Fortune' },
+  chest:  { name: 'TREASURE TROVE', color: '#ffb84a', desc: 'A Rare-or-better card after this fight', short: 'Rare+ card after the fight' },
+  clover: { name: 'LUCKY STREAK',   color: '#7aff8a', desc: '+10% Luck and a free spin', short: '+10% Luck, free spin' },
+  skull:  { name: 'DOOM',           color: '#c86aff', desc: 'The curse rebounds: 6 damage to the foe', short: '6 damage to the foe' },
+};
+
+// 3+ of a family anywhere on the reels in one spin: a bonus roll (Luck adds to the odds).
+export const SCATTER_BONUS = {
+  chest:  { name: 'BONUS CARD',  chance: 1,    color: '#ffb84a', desc: 'An extra card after this fight' },
+  clover: { name: 'LUCKY SPIN',  chance: 1,    color: '#7aff8a', desc: 'A free spin' },
+  blade:  { name: 'FRENZY',      chance: 0.35, color: '#ff7a5a', desc: 'Every hit this spin is a critical' },
+  coin:   { name: 'DOUBLE GOLD', chance: 0.5,  color: '#ffd24a', desc: 'Coins pay double this spin' },
+  shield: { name: 'SHIELD WALL', chance: 0.5,  color: '#8ab0ff', desc: '+3 Armor' },
+  potion: { name: 'SECOND WIND', chance: 0.5,  color: '#6aff8a', desc: 'Heal 3' },
+};
+
 // Card upgrades (cards sheet). type: add | upgrade | passive
 export const CARDS = {
   sword:            { name: 'Sword',            rarity: 'common',    type: 'add',     sym: 'sword' },

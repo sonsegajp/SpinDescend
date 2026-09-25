@@ -81,13 +81,14 @@ async function boot() {
       for (let i = 0; i < warp * 60; i++) { tSim += 1 / 60; game.update(1 / 60, tSim); }
     }
     const offset = tSim - performance.now() / 1000;
+    const hold = q.has('hold');                          // ?hold freezes the game right after the warp
     let last = performance.now();
     const frame = (t) => {
       const dt = Math.min(0.05, (t - last) / 1000);
       last = t;
       try {
-        game.update(dt, t / 1000 + offset);
-        game.render(t / 1000 + offset);
+        if (!hold) game.update(dt, t / 1000 + offset);
+        game.render(hold ? tSim : t / 1000 + offset);
       } catch (e) { showError(e); return; }
       requestAnimationFrame(frame);
     };

@@ -77,6 +77,8 @@ export class Audio {
       case 'buy': this.play('coin'); this.play('pick'); break;
       case 'deny': this.tone(140, 0.2, { vol: 0.1, type: 'square' }); break;
       case 'descend': this.noise(1.2, { vol: 0.2, freq: 600, q: 1, slide: 0.2 }); this.tone(220, 1.0, { vol: 0.08, type: 'sine', slide: 0.4 }); break;
+      case 'jackpot': [784, 988, 1175, 1568, 1976].forEach((f, i) => this.tone(f, 0.22, { vol: 0.08, type: 'square', delay: i * 0.07 }));
+        this.tone(2637, 0.5, { vol: 0.05, type: 'sine', delay: 0.38 }); break;
       case 'win': [523, 659, 784, 1046, 1318].forEach((f, i) => this.tone(f, 0.35, { vol: 0.09, type: 'square', delay: i * 0.12 })); break;
       case 'die': this.tone(220, 1.2, { vol: 0.15, type: 'sawtooth', slide: 0.25 }); this.noise(0.8, { vol: 0.2, freq: 200, q: 0.5 }); break;
       case 'enemydie': this.noise(0.4, { vol: 0.3, freq: 900, q: 0.8, slide: 0.2 }); break;

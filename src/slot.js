@@ -99,7 +99,7 @@ export class SlotMachine {
       r.dur = 1.15 + i * 0.42;
       r.spinning = true;
       r.stopped = false;
-      r.highlight = -1;
+      r.highlight = []; r.hlKey = '';
       r.dirty = true;
     });
     this.press = 1;
@@ -116,10 +116,14 @@ export class SlotMachine {
     });
   }
 
-  highlight(row, reel) {
+  highlight(row, reel) { this.highlightCells(row < 0 ? [] : [[row, reel]]); }
+
+  // light up any set of [row, reel] cells (a payline, a scatter)
+  highlightCells(cells) {
     this.reels.forEach((r, i) => {
-      const h = (i === reel) ? (row === 0 ? r.k : (r.k + SLOTS - 1) % SLOTS) : -1;
-      if (r.highlight !== h) { r.highlight = h; r.dirty = true; }
+      const h = cells.filter(c => c[1] === i).map(c => (c[0] === 0 ? r.k : (r.k + SLOTS - 1) % SLOTS));
+      const key = h.join(',');
+      if (r.hlKey !== key) { r.hlKey = key; r.highlight = h; r.dirty = true; }
     });
   }
 
@@ -163,7 +167,7 @@ export class SlotMachine {
       else { c.fillStyle = '#e0cfa8'; c.fillRect(0, y, CELLPX, CELLPX); }
       c.fillStyle = 'rgba(255,245,220,0.35)';
       c.fillRect(0, y, CELLPX, CELLPX);
-      if (k === r.highlight) {
+      if (Array.isArray(r.highlight) ? r.highlight.includes(k) : k === r.highlight) {
         c.fillStyle = 'rgba(255,214,90,0.55)';
         c.fillRect(0, y, CELLPX, CELLPX);
         c.strokeStyle = '#d8a030'; c.lineWidth = 6;
