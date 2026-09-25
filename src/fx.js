@@ -5,6 +5,27 @@
 const TAU = Math.PI * 2;
 const R = (a, b) => a + Math.random() * (b - a);
 const pick = a => (Array.isArray(a) ? a[(Math.random() * a.length) | 0] : a);
+const MAX_PARTS = 900;
+
+// soft round sprites (glows, smoke, projectile heads) are painted ONCE per colour and then
+// just drawImage'd - building a radial gradient per particle per frame is what made it lag
+const SPR = new Map();
+function sprite(kind, col, core) {
+  const key = kind + '|' + col + '|' + (core || '');
+  let c = SPR.get(key);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = c.height = 32;
+  const x = c.getContext('2d');
+  const grd = x.createRadialGradient(16, 16, 0, 16, 16, 16);
+  if (kind === 'smoke') { grd.addColorStop(0, col); grd.addColorStop(0.7, col); }
+  else { grd.addColorStop(0, core || 'rgba(255,255,255,0.95)'); grd.addColorStop(kind === 'head' ? 0.4 : 0.22, col); }
+  grd.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = grd;
+  x.fillRect(0, 0, 32, 32);
+  SPR.set(key, c);
+  return c;
+}
 
 export class FX {
   constructor() {
@@ -20,7 +41,7 @@ export class FX {
   //    g (gravity px/s^2), drag (1/s), shape, col (colour or list), add (additive), spin, jx/jy
   burst(x, y, o) {
     const n = o.n || 10;
-    for (let i = 0; i < n && this.parts.length < 1600; i++) {
+    for (let i = 0; i < n && this.parts.length < MAX_PARTS; i++) {
       const a = o.dir !== undefined ? o.dir + R(-(o.spread ?? 0.6), o.spread ?? 0.6) : R(0, TAU);
       const sp = R(...(o.speed || [40, 140]));
       const life = R(...(o.life || [0.35, 0.7]));
@@ -58,7 +79,7 @@ export class FX {
 
   // a projectile: flies from -> to over dur (with an arc), drawing img / a head, emitting a trail
   shot(o) {
-    this.shots.push({ t: 0, dur: 0.28, arc: 0, spin: 0, scale: 1, rate: 60, acc: 0, ...o });
+    this.shots.push({ t: 0, dur: 0.28, arc: 0, spin: 0, scale: 1, rate: 60, acc: 0, ...o, x: o.from[0], y: o.from[1] });
   }
 
   // ---------------------------------------------------------------- simulation
@@ -104,13 +125,12 @@ export class FX {
 
   drawShot(g, s) {
     const k = Math.min(1, s.t / s.dur);
+    if (!Number.isFinite(s.x) || !Number.isFinite(s.y)) return;
     if (s.head) {
       g.globalCompositeOperation = 'lighter';
       const r = s.head.r * (1 + 0.15 * Math.sin(s.t * 40));
-      const grd = g.createRadialGradient(s.x, s.y, 0, s.x, s.y, r);
-      grd.addColorStop(0, s.head.core || '#fff'); grd.addColorStop(0.4, s.head.col); grd.addColorStop(1, 'rgba(0,0,0,0)');
-      g.globalAlpha = 1; g.fillStyle = grd;
-      g.fillRect(s.x - r, s.y - r, r * 2, r * 2);
+      g.globalAlpha = 1;
+      g.drawImage(sprite('head', s.head.col, s.head.core || '#fff'), s.x - r, s.y - r, r * 2, r * 2);
       g.globalCompositeOperation = 'source-over';
     }
     if (s.img) {
@@ -127,6 +147,7 @@ export class FX {
   }
 
   drawPart(g, p) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
     const k = p.t / p.life;
     const a = p.alpha * (k < 0.1 ? k / 0.1 : 1 - Math.max(0, (k - 0.35) / 0.65));
     const s = p.size + (p.size1 - p.size) * k;
@@ -140,11 +161,8 @@ export class FX {
         g.lineWidth = p.w;
         g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x - p.vx * p.len, p.y - p.vy * p.len); g.stroke(); break;
       }
-      case 'glow': {                                                     // white-hot core fading into its colour
-        const grd = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, s);
-        grd.addColorStop(0, 'rgba(255,255,255,0.95)'); grd.addColorStop(0.22, p.col); grd.addColorStop(1, 'rgba(0,0,0,0)');
-        g.fillStyle = grd; g.fillRect(p.x - s, p.y - s, s * 2, s * 2); break;
-      }
+      case 'glow':                                                       // white-hot core fading into its colour
+        g.drawImage(sprite('glow', p.col), p.x - s, p.y - s, s * 2, s * 2); break;
       case 'ring': {                                                     // a soft wide band under a bright thin edge
         const w = p.w * (1 - k * 0.6);
         g.globalAlpha *= 0.35; g.lineWidth = w * 3.5;
@@ -188,12 +206,9 @@ export class FX {
       case 'bubble':
         g.lineWidth = 1; g.beginPath(); g.arc(p.x, p.y, s, 0, TAU); g.stroke();
         g.fillRect(p.x - s / 2, p.y - s / 2, 1, 1); break;
-      case 'smoke': {                                                    // soft puff
-        const grd = g.createRadialGradient(p.x - s * 0.3, p.y - s * 0.3, 0, p.x, p.y, s);
-        grd.addColorStop(0, p.col); grd.addColorStop(0.7, p.col); grd.addColorStop(1, 'rgba(0,0,0,0)');
-        g.globalAlpha *= 0.6; g.fillStyle = grd;
-        g.beginPath(); g.arc(p.x, p.y, s, 0, TAU); g.fill(); break;
-      }
+      case 'smoke':                                                      // soft puff
+        g.globalAlpha *= 0.6;
+        g.drawImage(sprite('smoke', p.col), p.x - s, p.y - s, s * 2, s * 2); break;
       case 'die': {
         g.save(); g.translate(p.x, p.y); g.rotate(p.rot);
         g.fillStyle = '#f4f0e8'; g.fillRect(-s, -s, s * 2, s * 2);

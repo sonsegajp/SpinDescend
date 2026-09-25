@@ -4,9 +4,9 @@
 // Reels are cylinders with 8 symbol slots around them; their texture is a
 // canvas strip redrawn whenever the slots change. Rotation theta = k * PI/4
 // shows slot k in the top row and slot k-1 in the bottom row.
-import { gl, updateTex } from './gl.js?v=20260925153851';
-import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925153851';
-import { SYMBOLS } from './data.js?v=20260925153851';
+import { gl, updateTex } from './gl.js?v=20260925180435';
+import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925180435';
+import { SYMBOLS } from './data.js?v=20260925180435';
 
 const SLOTS = 8, CELLPX = 96;
 const STEP = Math.PI * 2 / SLOTS;

@@ -1,11 +1,11 @@
 // main.js - boot: display canvas + offscreen 2D overlay, asset loading with a
 // progress bar, the frame pipeline, then the game loop.
-import { initGL } from './gl.js?v=20260925153851';
-import { loadAll } from './assets.js?v=20260925153851';
-import { Game } from './game.js?v=20260925153851';
-import { Input } from './input.js?v=20260925153851';
-import { Audio } from './audio.js?v=20260925153851';
-import { Pipeline } from './frame.js?v=20260925153851';
+import { initGL } from './gl.js?v=20260925180435';
+import { loadAll } from './assets.js?v=20260925180435';
+import { Game } from './game.js?v=20260925180435';
+import { Input } from './input.js?v=20260925180435';
+import { Audio } from './audio.js?v=20260925180435';
+import { Pipeline } from './frame.js?v=20260925180435';
 
 const glc = document.getElementById('gl');
 const ovc = document.createElement('canvas');           // 2D overlay, composited on the GPU
@@ -78,7 +78,8 @@ async function boot() {
       game.debug(q);
       // ?warp=N simulates N seconds instantly (headless screenshots)
       const warp = parseFloat(q.get('warp') || '0');
-      for (let i = 0; i < warp * 60; i++) { tSim += 1 / 60; game.update(1 / 60, tSim); }
+      const draw = q.has('warpdraw');                  // ?warpdraw: also render every simulated frame (catches draw bugs)
+      for (let i = 0; i < warp * 60; i++) { tSim += 1 / 60; game.update(1 / 60, tSim); if (draw) game.render(tSim); }
     }
     if (q.has('autospin')) {                          // dump the fight log into the page (read with --dump-dom)
       const d = document.createElement('pre');
