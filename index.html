@@ -17,7 +17,23 @@
 <canvas id="gl"></canvas>
 <canvas id="load"></canvas>
 <div id="err"></div>
-<script>window.SD_ASSETS = "./assets/"; window.SD_BUILD = "20260925180435";</script>
-<script type="module" src="src/main.js?v=20260925180435"></script>
+<script>
+window.SD_ASSETS = "./assets/"; window.SD_BUILD = "20260925180707";
+(function () {
+  var start = function () {
+    var s = document.createElement('script');
+    s.type = 'module'; s.src = 'src/main.js?v=' + window.SD_BUILD;
+    document.body.appendChild(s);
+  };
+  fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (v) {
+    if (v.build && v.build !== window.SD_BUILD) {
+      var key = 'sd_reload_' + v.build, tried = null;
+      try { tried = sessionStorage.getItem(key); sessionStorage.setItem(key, '1'); } catch (e) { tried = '1'; }
+      if (!tried) { var u = new URL(location.href); u.searchParams.set('b', v.build); location.replace(u.toString()); return; }
+    }
+    start();
+  }).catch(start);
+})();
+</script>
 </body>
 </html>
