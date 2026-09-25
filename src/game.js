@@ -20,8 +20,6 @@ export class Game {
   constructor(assets, input, audio, overlay, pipe) {
     this.a = assets;
     this.pipe = pipe;
-    this.ps1 = true;
-    try { this.ps1 = localStorage.getItem('sd_ps1') !== '0'; } catch (e) { /* storage blocked: keep default */ }
     this.input = input;
     this.audio = audio;
     this.R = new Renderer(assets);
@@ -193,7 +191,6 @@ export class Game {
     for (const k of keys) if (is(k, 'mute')) this.ui.toast(this.audio.toggleMute() ? 'Sound off' : 'Sound on', now);
     for (const k of keys) if (is(k, 'map') && this.state !== 'title') this.showMap = !this.showMap;
     for (const k of keys) if (is(k, 'crt')) this.toggleCRT();
-    for (const k of keys) if (is(k, 'ps1')) this.togglePS1();
 
     this.slot.update(dt, now, (i) => this.onReelStop(i));
     const pointer = this.input.pointer;
@@ -247,17 +244,11 @@ export class Game {
       this.titleNext = this.time + 4.2;
     }
     for (const k of keys) {
-      if (is(k, 'confirm')) this.titleAction(['start', 'skin', 'crt', 'ps1'][this.menuFocus]);
-      if (is(k, 'back') || is(k, 'turnR')) this.menuFocus = Math.min(3, this.menuFocus + 1);
+      if (is(k, 'confirm')) this.titleAction(['start', 'skin', 'crt'][this.menuFocus]);
+      if (is(k, 'back') || is(k, 'turnR')) this.menuFocus = Math.min(2, this.menuFocus + 1);
       if (is(k, 'forward') || is(k, 'turnL')) this.menuFocus = Math.max(0, this.menuFocus - 1);
     }
     for (const c of clicks) { const id = this.ui.hit(c); if (id) this.titleAction(id); }
-  }
-
-  togglePS1() {
-    this.ps1 = !this.ps1;
-    try { localStorage.setItem('sd_ps1', this.ps1 ? '1' : '0'); } catch (e) { /* storage blocked */ }
-    this.ui.toast(this.ps1 ? 'PS1 look on' : 'PS1 look off', this.time);
   }
 
   toggleCRT() {
@@ -269,7 +260,6 @@ export class Game {
   titleAction(id) {
     this.audio.play('click');
     if (id === 'crt') this.toggleCRT();
-    if (id === 'ps1') this.togglePS1();
     if (id === 'start') this.newRun();
     if (id === 'skin') {
       this.skin = this.skin === 'classic' ? 'paladin' : 'classic';
@@ -1307,7 +1297,7 @@ export class Game {
     this.R.begin({
       proj: this.proj, view: this.view, cam: [ex, ey, ez], ambient: B.ambient, dir: B.sun ? { dir: B.sun.dir, col: B.sun.col } : null,
       fogColor: B.fog, fogRange: B.fogRange, lights, time: now, bands: 10,
-      ps1: this.ps1 ? { snap: [320, 180], affine: 0.55, dither: 1 } : null,
+      ps1: { snap: [320, 180], affine: 0.55, dither: 1 },          // the PS1 look: vertex wobble, affine warp, 15-bit dither
     });
     this.R.drawBatches(this.static);
 
@@ -1577,7 +1567,6 @@ export class Game {
     U.button('start', 'DESCEND', bx, y, 140, 24, ptr, { size: 14, focus: this.menuFocus === 0, fill: '#6a1c22', hotFill: '#8a262e' });
     U.button('skin', `Skin: ${this.skin === 'classic' ? 'Knight' : 'Paladin'}`, bx, y + 32, 140, 20, ptr, { size: 11, focus: this.menuFocus === 1 });
     U.button('crt', `CRT filter: ${this.pipe.crt ? 'On' : 'Off'}  [V]`, bx, y + 58, 140, 20, ptr, { size: 11, focus: this.menuFocus === 2 });
-    U.button('ps1', `PS1 look: ${this.ps1 ? 'On' : 'Off'}  [P]`, bx, y + 82, 140, 20, ptr, { size: 11, focus: this.menuFocus === 3 });
     // character plate
     const px = Math.round(W * 0.66), py = Math.round(H * 0.78);
     U.text('THE KNIGHT', px, py, { size: 15, align: 'center', spacing: 1 });

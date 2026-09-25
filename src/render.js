@@ -1,6 +1,6 @@
 // render.js - the forward renderer: lit/baked/emissive materials, point lights,
 // fog, banded lighting for the pixel-art look, sky, and model/batch drawing.
-// PS1 mode (world pass only): vertices snap to a coarse screen grid (wobble),
+// PS1 look (world pass only): vertices snap to a coarse screen grid (wobble),
 // textures blend toward affine mapping (warp) and colour is dithered to 15 bit.
 import { gl, program, texFromImage, solidTex } from './gl.js';
 import { ident, mul } from './math.js';
