@@ -217,31 +217,46 @@ export const ENEMIES = {
 
 // stair guards (elites) per biome
 export const ELITES = { dungeon: ['goblin', 'skeleton', 'redead'], mines: ['moblin', 'skeleton', 'tonberry'],
+  crypt: ['redead', 'cultist', 'darknut'], frozen: ['darknut', 'skeleton', 'moblin'], magma: ['moblin', 'darknut', 'tonberry'],
   ruins: ['darknut', 'moblin', 'redead'] };
 
 export const BIOMES = {
   dungeon: {
-    name: 'Dungeon', floors: [1, 2, 3], enemies: ['goblin', 'goblin', 'skeleton', 'slime', 'cultist', 'keese', 'keese', 'redead'],
+    name: 'Dungeon', floors: [1, 2], enemies: ['goblin', 'goblin', 'skeleton', 'slime', 'cultist', 'keese', 'keese', 'redead'],
     fog: [0.03, 0.032, 0.05], fogRange: [3.0, 15.0], ambient: [0.2, 0.22, 0.3],
     torch: [1.55, 1.0, 0.55], torchRadius: 6.2, lanternOnPlayer: [0.42, 0.36, 0.3],
   },
   mines: {
-    name: 'Mines', floors: [4, 5, 6], enemies: ['skeleton', 'goblin', 'slime', 'moblin', 'moblin', 'keese', 'tonberry', 'cultist'],
+    name: 'Mines', floors: [3, 4], enemies: ['skeleton', 'goblin', 'slime', 'moblin', 'moblin', 'keese', 'tonberry', 'cultist'],
     fog: [0.05, 0.036, 0.026], fogRange: [3.0, 14.0], ambient: [0.26, 0.21, 0.17],
     torch: [2.0, 1.2, 0.45], torchRadius: 7.0, lanternOnPlayer: [0.42, 0.34, 0.24],
   },
+  crypt: {
+    name: 'Crypt', floors: [5, 6], enemies: ['redead', 'redead', 'skeleton', 'skeleton', 'shadow', 'cultist', 'keese', 'slime'],
+    fog: [0.045, 0.035, 0.06], fogRange: [2.5, 13.0], ambient: [0.23, 0.21, 0.3],
+    torch: [1.35, 1.2, 0.62], torchRadius: 4.6, lanternOnPlayer: [0.34, 0.34, 0.42],
+  },
+  frozen: {
+    name: 'Frozen Caverns', floors: [7, 8], enemies: ['keese', 'skeleton', 'darknut', 'shadow', 'slime', 'goblin', 'tonberry'],
+    fog: [0.09, 0.14, 0.21], fogRange: [3.0, 16.0], ambient: [0.2, 0.25, 0.33],
+    torch: [0.34, 0.6, 1.1], torchRadius: 4.4, lanternOnPlayer: [0.3, 0.33, 0.38],
+  },
+  magma: {
+    name: 'Magma Forge', floors: [9, 10], enemies: ['moblin', 'moblin', 'goblin', 'darknut', 'tonberry', 'slime', 'cultist'],
+    fog: [0.16, 0.05, 0.02], fogRange: [3.0, 15.0], ambient: [0.34, 0.17, 0.11],
+    torch: [2.3, 1.05, 0.36], torchRadius: 6.5, lanternOnPlayer: [0.35, 0.24, 0.18],
+  },
   ruins: {
-    name: 'Ruins', floors: [7, 8, 9], enemies: ['cultist', 'skeleton', 'darknut', 'redead', 'shadow', 'shadow', 'moblin', 'goblin'],
+    name: 'Ruins', floors: [11, 12], enemies: ['cultist', 'skeleton', 'darknut', 'redead', 'shadow', 'shadow', 'moblin', 'goblin'],
     fog: [0.42, 0.5, 0.62], fogRange: [8.0, 46.0], ambient: [0.42, 0.47, 0.54],
     sun: { dir: [0.45, -0.75, 0.35], col: [0.72, 0.74, 0.8] }, sky: true,
     torch: [1.6, 1.2, 0.7], torchRadius: 5.0, lanternOnPlayer: [0.12, 0.12, 0.12],
   },
 };
 
+const ORDER = ['dungeon', 'mines', 'crypt', 'frozen', 'magma', 'ruins'];
 export function biomeForFloor(f) {
-  if (f <= 3) return 'dungeon';
-  if (f <= 6) return 'mines';
-  return 'ruins';
+  return ORDER[Math.min(ORDER.length - 1, Math.max(0, Math.floor((f - 1) / 2)))];
 }
 
-export const LAST_FLOOR = 9;
+export const LAST_FLOOR = 12;

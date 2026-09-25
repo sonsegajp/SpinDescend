@@ -1,10 +1,11 @@
-// level.js - procedural floors built from the concept's three biomes.
+// level.js - procedural floors for the six biomes (the concept's dungeon / mines /
+// ruins plus the crypt, the frozen caverns and the magma forge).
 //
 // Grid: cell (x, y) is centred at world (x*CELL, 0, y*CELL); y grows toward +Z.
 // Directions: 0 = north (-Z), 1 = east (+X), 2 = south (+Z), 3 = west (-X).
 import { rng, trs } from './math.js';
 import { Batcher } from './gl.js';
-import { BIOMES, ELITES, biomeForFloor } from './data.js';
+import { BIOMES, ELITES, biomeForFloor, LAST_FLOOR } from './data.js';
 
 export const CELL = 2.0;
 export const WALL_H = 2.6;
@@ -17,7 +18,7 @@ export const DY = [-1, 0, 1, 0];
 export function generate(floor, seed) {
   const R = rng(seed);
   const biome = biomeForFloor(floor);
-  const tier = (floor - 1) % 3;
+  const tier = (floor - 1) % 2 + (floor > 6 ? 1 : 0);      // floors grow as you descend
   const W = 15 + tier * 2, H = W;                       // odd sizes: nodes sit on odd coordinates
   const g = new Uint8Array(W * H);
   const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : g[y * W + x];
@@ -92,7 +93,7 @@ export function generate(floor, seed) {
   const B = BIOMES[biome];
 
   // elite guarding the stairs on the last floor of each biome
-  if (floor % 3 === 0) {
+  if (floor >= LAST_FLOOR || biomeForFloor(floor + 1) !== biome) {
     let guard = null;
     for (const d of exits(stairs.x, stairs.y)) {
       const nx = stairs.x + DX[d], ny = stairs.y + DY[d];
@@ -179,12 +180,21 @@ export function build(level, models) {
   const put = (name, x, y, z, ry = 0, s = 1) => bat.add(models[name], trs(x, y, z, ry, 0, 0, s));
   const blocked = new Set(level.entities.map(e => `${e.x},${e.y}`));
 
-  const pref = biome === 'dungeon' ? 'dun' : biome === 'mines' ? 'mine' : 'ruin';
   // weighted variant lists (plain pieces most often, the painted set-pieces now and then)
-  const walls = { dun: ['dun_wall0', 'dun_wall0', 'dun_wall0', 'dun_wall1', 'dun_wall1', 'dun_wall2', 'dun_wall3'],
-                  mine: ['mine_wall0', 'mine_wall1'], ruin: ['ruin_wall0', 'ruin_wall1', 'ruin_wall2'] }[pref];
-  const floors = { dun: ['dun_floor0', 'dun_floor0', 'dun_floor0', 'dun_floor1', 'dun_floor1', 'dun_floor2'],
-                   mine: ['mine_floor0', 'mine_floor1'], ruin: ['ruin_floor0', 'ruin_floor1'] }[pref];
+  const KIT = {
+    dungeon: { walls: ['dun_wall0', 'dun_wall0', 'dun_wall0', 'dun_wall1', 'dun_wall1', 'dun_wall2', 'dun_wall3'],
+               floors: ['dun_floor0', 'dun_floor0', 'dun_floor0', 'dun_floor1', 'dun_floor1', 'dun_floor2'], ceil: 'dun_ceil',
+               pillar: 'dun_pillar' },
+    mines: { walls: ['mine_wall0', 'mine_wall1'], floors: ['mine_floor0', 'mine_floor1'], ceil: 'mine_ceil', spin: true },
+    crypt: { walls: ['crypt_wall0', 'crypt_wall0', 'crypt_wall1', 'crypt_wall1', 'crypt_wall2'],
+             floors: ['crypt_floor0', 'crypt_floor0', 'crypt_floor0', 'crypt_floor1'], ceil: 'crypt_ceil', pillar: 'crypt_pillar' },
+    frozen: { walls: ['ice_wall0', 'ice_wall0', 'ice_wall1', 'ice_wall2', 'ice_wall2'], floors: ['ice_floor0', 'ice_floor0', 'ice_floor1'],
+              ceil: 'ice_ceil', spin: true },
+    magma: { walls: ['magma_wall0', 'magma_wall0', 'magma_wall1', 'magma_wall2'], floors: ['magma_floor0', 'magma_floor0', 'magma_floor1'],
+             ceil: 'magma_ceil', spin: true },
+    ruins: { walls: ['ruin_wall0', 'ruin_wall1', 'ruin_wall2'], floors: ['ruin_floor0', 'ruin_floor1'] },
+  }[biome];
+  const walls = KIT.walls, floors = KIT.floors;
   // corner props: the model's corner is its origin with the room toward model +x/+y
   const cornerRot = (ix, iz) => (ix > 0 ? (iz < 0 ? 0 : 3 * Math.PI / 2) : (iz < 0 ? Math.PI / 2 : Math.PI));
 
@@ -196,8 +206,7 @@ export function build(level, models) {
       const open = at(x, y);
       if (open) {
         if (!(x === level.stairs.x && y === level.stairs.y)) put(R.pick(floors), cx, 0, cz, R.int(0, 3) * Math.PI / 2);
-        if (biome === 'dungeon') put('dun_ceil', cx, 0, cz);
-        if (biome === 'mines') put('mine_ceil', cx, 0, cz, R.int(0, 3) * Math.PI / 2);
+        if (KIT.ceil) put(KIT.ceil, cx, 0, cz, KIT.spin ? R.int(0, 3) * Math.PI / 2 : 0);
         for (let d = 0; d < 4; d++) {
           if (at(x + DX[d], y + DY[d])) continue;
           const ex = cx + DX[d] * CELL / 2, ez = cz + DY[d] * CELL / 2;
@@ -224,7 +233,7 @@ export function build(level, models) {
       const n = a + b + c + d;
       const diag = (n === 2 && a === d);
       const px = i * CELL - CELL / 2, pz = j * CELL - CELL / 2;
-      if (biome === 'dungeon' && (n === 3 || diag || (n === 1 && R.chance(0.35)))) put('dun_pillar', px, 0, pz);
+      if (KIT.pillar && (n === 3 || diag || (n === 1 && R.chance(0.35)))) put(KIT.pillar, px, 0, pz);
       if (biome === 'ruins' && (n === 3 || diag || (n >= 1 && n <= 2 && R.chance(0.3))))
         put(R.chance(0.6) ? R.pick(['ruin_pillar0', 'ruin_pillar1']) : 'ruin_pillar_short0', px, 0, pz, R.int(0, 3) * Math.PI / 2);
     }
@@ -308,6 +317,68 @@ export function build(level, models) {
           const d = R.pick(wallDirs);
           put('chains', cx + DX[d] * 0.62, 0, cz + DY[d] * 0.62, R() * 6);
         }
+      }
+    }
+  }
+  // ---- the deeper biomes
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (!at(x, y) || (biome !== 'crypt' && biome !== 'frozen' && biome !== 'magma')) continue;
+      const [cx, , cz] = cellPos(x, y);
+      const busy = blocked.has(`${x},${y}`) || (x === level.stairs.x && y === level.stairs.y);
+      const wallDirs = [0, 1, 2, 3].filter(d => !at(x + DX[d], y + DY[d]));
+      const corners = [];
+      for (let i = 0; i < wallDirs.length; i++) for (let j = i + 1; j < wallDirs.length; j++)
+        if ((wallDirs[i] + wallDirs[j]) % 2 === 1) corners.push([wallDirs[i], wallDirs[j]]);
+      const lit = (x * 7 + y * 13) % 4 === 0;
+      if (biome === 'crypt') {
+        if (wallDirs.length && lit) {                                  // candle clusters at the foot of the walls
+          const d = R.pick(wallDirs);
+          const px = cx + DX[d] * 0.7, pz = cz + DY[d] * 0.7;
+          put('candles', px, 0, pz, R() * 6);
+          lights.push({ pos: [px - DX[d] * 0.2, 0.6, pz - DY[d] * 0.2], col: B.torch, radius: B.torchRadius, flicker: R() * 10 });
+        }
+        for (const [d1, d2] of corners) {
+          const kx = DX[d1] + DX[d2], kz = DY[d1] + DY[d2];
+          if (R.chance(0.45)) put('cobweb', cx + kx * (CELL / 2 - 0.02), 0, cz + kz * (CELL / 2 - 0.02), cornerRot(-kx, -kz));
+        }
+        if (!busy && wallDirs.length && R.chance(0.16)) {                // coffins laid along a wall
+          const d = R.pick(wallDirs);
+          put('coffin', cx + DX[d] * 0.55, 0, cz + DY[d] * 0.55, wallRot(d) + Math.PI / 2);
+        }
+        if (!busy && R.chance(0.14)) put('bones', cx + (R() - 0.5) * 0.9, 0, cz + (R() - 0.5) * 0.9, R() * 6);
+        if (wallDirs.length && R.chance(0.08)) {
+          const d = R.pick(wallDirs);
+          put('chains', cx + DX[d] * 0.62, 0, cz + DY[d] * 0.62, R() * 6);
+        }
+      }
+      if (biome === 'frozen') {
+        if (!busy && wallDirs.length && lit) {                          // glowing ice crystals light the caves
+          const d = R.pick(wallDirs);
+          const px = cx + DX[d] * 0.72, pz = cz + DY[d] * 0.72;
+          put('crystals', px, 0, pz, wallRot(d));
+          lights.push({ pos: [px - DX[d] * 0.3, 0.6, pz - DY[d] * 0.3], col: B.torch, radius: B.torchRadius, flicker: 0 });
+        }
+        if (R.chance(0.45)) put('icicles', cx + (R() - 0.5) * 1.1, 0, cz + (R() - 0.5) * 1.1, R() * 6);
+      }
+      if (biome === 'magma') {
+        if (!busy && lit && (corners.length || wallDirs.length)) {       // braziers
+          let px, pz;
+          if (corners.length) {
+            const [d1, d2] = R.pick(corners);
+            px = cx + (DX[d1] + DX[d2]) * 0.6; pz = cz + (DY[d1] + DY[d2]) * 0.6;
+          } else {
+            const d = R.pick(wallDirs);
+            px = cx + DX[d] * 0.7; pz = cz + DY[d] * 0.7;
+          }
+          put('brazier', px, 0, pz, R() * 6);
+          lights.push({ pos: [px, 1.1, pz], col: B.torch, radius: B.torchRadius, flicker: R() * 10 });
+        }
+        if (wallDirs.length && R.chance(0.07)) {
+          const d = R.pick(wallDirs);
+          put('chains', cx + DX[d] * 0.62, 0, cz + DY[d] * 0.62, R() * 6);
+        }
+        if (!busy && R.chance(0.05)) put('bones', cx + (R() - 0.5) * 0.9, 0, cz + (R() - 0.5) * 0.9, R() * 6);
       }
     }
   }

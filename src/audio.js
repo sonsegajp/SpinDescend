@@ -92,16 +92,20 @@ export class Audio {
     const t = this.ctx.currentTime;
     const g = this.ctx.createGain();
     g.gain.value = 0.0;
-    g.gain.linearRampToValueAtTime(biome === 'ruins' ? 0.05 : 0.07, t + 2);
+    // [gain, noise lowpass Hz, drone Hz, drone gain]: wind for the ruins and the ice, rumble for the forge
+    const A = { dungeon: [0.07, 220, 55, 0.25], mines: [0.07, 220, 49, 0.25], crypt: [0.06, 160, 41, 0.3],
+                frozen: [0.06, 1100, 98, 0.06], magma: [0.08, 140, 36, 0.35], ruins: [0.05, 700, 82, 0.08] }[biome] ||
+              [0.07, 220, 55, 0.25];
+    g.gain.linearRampToValueAtTime(A[0], t + 2);
     g.connect(this.master);
     const s = this.ctx.createBufferSource();
     s.buffer = this.noiseBuf; s.loop = true;
     const f = this.ctx.createBiquadFilter();
-    f.type = 'lowpass'; f.frequency.value = biome === 'ruins' ? 700 : 220;
+    f.type = 'lowpass'; f.frequency.value = A[1];
     s.connect(f); f.connect(g);
     const o = this.ctx.createOscillator();
-    o.type = 'sine'; o.frequency.value = biome === 'mines' ? 49 : biome === 'ruins' ? 82 : 55;
-    const og = this.ctx.createGain(); og.gain.value = biome === 'ruins' ? 0.08 : 0.25;
+    o.type = 'sine'; o.frequency.value = A[2];
+    const og = this.ctx.createGain(); og.gain.value = A[3];
     o.connect(og); og.connect(g);
     s.start(); o.start();
     this.amb = [s, o];

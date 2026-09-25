@@ -40,7 +40,7 @@ export class Game {
     this.proj = perspective(FOV, W / H, 0.05, 90);
   }
 
-  // test hooks: ?start, ?floor=N, ?combat, ?reward, ?shop, ?skin=paladin, ?map
+  // test hooks: ?start, ?floor=N, ?face=0-3, ?combat, ?reward, ?shop, ?skin=paladin, ?map
   debug(q) {
     if (q.get('skin') === 'paladin') this.skin = 'paladin';
     if (q.get('seed')) this.fixedSeed = parseInt(q.get('seed'), 10);
@@ -48,7 +48,12 @@ export class Game {
     this.newRun();
     this.fade = null;
     const f = parseInt(q.get('floor') || '1', 10);
-    if (f > 1) this.loadFloor(f, this.runSeed + f * 7919);
+    if (f > 1) {
+      this.loadFloor(f, this.runSeed + f * 7919);
+      this.ui.toasts = [];
+      this.ui.toast(`Floor ${f} - The ${BIOMES[biomeForFloor(f)].name}`, this.time, '#e8c878', 2.6);
+    }
+    if (q.get('face')) { this.dir = parseInt(q.get('face'), 10) & 3; this.cam.yaw = dirYaw(this.dir); }
     if (q.has('map')) this.showMap = true;
     if (q.has('combat')) {
       const e = this.entities.find(x => x.type === 'enemy' && (!q.get('combat') || x.kind === q.get('combat'))) ||
@@ -135,9 +140,9 @@ export class Game {
   spawn(e) {
     if (e.type === 'enemy') {
       const def = ENEMIES[e.kind];
-      const mult = 1 + (this.floor - 1) * 0.16;
+      const mult = 1 + (this.floor - 1) * 0.125;           // 12 floors: peaks where the old 9-floor run did
       const hp = Math.round(def.hp * mult * (e.elite ? 1.7 : 1));
-      const ent = { ...e, def, hp, maxHp: hp, atk: def.atk + Math.floor((this.floor - 1) / 3) + (e.elite ? 1 : 0),
+      const ent = { ...e, def, hp, maxHp: hp, atk: def.atk + Math.floor((this.floor - 1) / 4) + (e.elite ? 1 : 0),
                poison: 0, burn: 0, stunTurns: 0, alive: true, flash: 0, advance: 0, turn: 0, fadeOut: 0,
                phase: Math.random() * 6, scale: ENEMY_SCALE * (e.elite ? 1.3 : 1) };
       ent.animator = this.makeAnimator(def.model);
