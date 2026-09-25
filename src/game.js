@@ -10,7 +10,7 @@ import { Animator } from './anim.js';
 import { is } from './input.js';
 import { generate, build, CELL, DX, DY } from './level.js';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, KNIGHT_BAG, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SCATTER_BONUS } from './data.js';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS } from './data.js';
 
 const EYE = 0.84, BACK = 0.8, PITCH = -0.19, FOV = 58 * Math.PI / 180;
 const ENEMY_SCALE = 1.18;
@@ -58,7 +58,7 @@ export class Game {
       if (q.has('spin')) this.later(0.6, () => this.spinReels());
     }
     if (q.has('reward')) this.offerCards(3, 'chest');
-    if (q.has('bag')) { this.bagReturn = this.state; this.state = 'bag'; }
+    if (q.has('bag')) { this.bagReturn = this.state; this.state = 'bag'; this.bagPage = q.get('bag') || 'reels'; }
     if (q.has('merchant')) {
       const m = this.entities.find(e => e.wayside);
       const d = m && this.level.exits(m.x, m.y)[0];
@@ -103,7 +103,7 @@ export class Game {
 
   newRun() {
     this.player = { hp: 25, maxHp: 25, gold: 0, bag: [...KNIGHT_BAG], relics: new Set(), armor: 0, evolve: {},
-                    kills: 0, cards: 0, might: 0, guard: 0, fortune: 0, luck: 0 };
+                    kills: 0, cards: 0, might: 0, guard: 0, fortune: 0, luck: 0, blast: 0, venom: 0, lifesteal: 0 };
     this.runSeed = (Math.random() * 1e9) | 0;
     this.slot.state.hp = 25; this.slot.state.maxHp = 25; this.slot.state.gold = 0;
     this.loadFloor(1, this.runSeed + 1);
@@ -196,6 +196,7 @@ export class Game {
     this.cardHover = this.cards.active ? this.cards.update(now, pointer) : -1;
     this.slot.state.spinHover = !!(pointer && this.inRect(pointer, this.slot.spinRect()));
 
+    const wasBag = this.state === 'bag';
     switch (this.state) {
       case 'title': this.updateTitle(keys, clicks); break;
       case 'explore': this.updateExplore(dt, keys, clicks); break;
@@ -203,13 +204,21 @@ export class Game {
       case 'reward': this.updateReward(keys, clicks); break;
       case 'shop': this.updateShop(keys, clicks); break;
       case 'stairs': this.updateStairs(keys, clicks); break;
-      case 'bag': for (const k of keys) if (is(k, 'bag') || is(k, 'cancel') || is(k, 'confirm')) this.state = this.bagReturn;
-        for (const c of clicks) if (this.ui.hit(c) === 'close') this.state = this.bagReturn;
+      case 'bag':
+        for (const k of keys) {
+          if (is(k, 'bag') && this.bagPage !== 'pay') this.bagPage = 'pay';
+          else if (is(k, 'bag') || is(k, 'cancel') || is(k, 'confirm')) this.state = this.bagReturn;
+        }
+        for (const c of clicks) {
+          const id = this.ui.hit(c);
+          if (id === 'close') this.state = this.bagReturn;
+          if (id && id.startsWith('page:')) this.bagPage = id.slice(5);
+        }
         break;
       case 'dead': case 'won': this.updateEnd(keys, clicks); break;
     }
-    if (['explore', 'combat', 'shop', 'reward', 'stairs'].includes(this.state)) {
-      for (const k of keys) if (is(k, 'bag')) { this.bagReturn = this.state; this.state = 'bag'; }
+    if (!wasBag && ['explore', 'combat', 'shop', 'reward', 'stairs'].includes(this.state)) {
+      for (const k of keys) if (is(k, 'bag')) { this.bagReturn = this.state; this.state = 'bag'; this.bagPage = 'reels'; }
     }
     this.animateCamera(dt);
     this.animateEntities(dt, now);
@@ -512,6 +521,7 @@ export class Game {
     C.phase = 'resolving';
     C.queue = [];
     C.dealt = 0; C.swords = 0; C.vials = 0; C.charm = false; C.frenzy = false; C.doubleGold = false;
+    C.blessed = false; C.chain = false;
     const flat = C.grid.flat();
     C.charm = flat.includes('charm');
     C.swordsLanded = flat.some(s => SYMBOLS[s].dmg && !SYMBOLS[s].self);
@@ -528,7 +538,8 @@ export class Game {
         this.audio.play('luck');
       }
     }
-    for (const b of this.findBonuses(C.grid)) C.queue.push(b);
+    const hits = b => (b.line === 'skull' || b.line === 'bomb' || b.special === 'skull_cursed' ? 1 : 0);
+    for (const b of this.findBonuses(C.grid).sort((a, b) => hits(a) - hits(b))) C.queue.push(b);
     for (let row = 0; row < 2; row++) for (let reel = 0; reel < 3; reel++) C.queue.push([row, reel]);
     C.nextAt = this.time + (C.queue.length > 6 ? 0.35 : 0.15);
   }
@@ -542,11 +553,15 @@ export class Game {
       const fs = grid[row].map(fam);
       const real = fs.filter(f => f !== 'wild');
       if (real.includes(null)) continue;
-      const f = real.length ? real[0] : 'blade';
+      const f = real.length ? real[0] : 'wild';
+      const line = [[row, 0], [row, 1], [row, 2]];
       if (real.every(x => x === f) && LINE_BONUS[f]) {
-        out.push({ line: f, cells: [[row, 0], [row, 1], [row, 2]] });
+        out.push({ line: f, cells: line });
         lined.add(f);
       }
+      // the same rare symbol three times: its own bonus on top
+      const ids = grid[row].filter(id => !SYMBOLS[id].wild);
+      if (ids.length && ids.every(id => id === ids[0]) && SPECIAL_LINE[ids[0]]) out.push({ special: ids[0], cells: line });
     }
     const cells = {};
     for (let row = 0; row < 2; row++) for (let reel = 0; reel < 3; reel++) {
@@ -566,7 +581,10 @@ export class Game {
   applyLine(b) {
     const C = this.combat, P = this.player, L = LINE_BONUS[b.line];
     this.slot.highlightCells(b.cells);
-    this.banner(`${L.name}!`, `3 ${FAMILY_NAME[b.line]} in a row: ${L.desc}`, L.color);
+    let desc = L.desc;
+    const roll = b.line === 'dice' ? [1, 2, 3].map(() => 1 + Math.floor(Math.random() * 6)) : null;
+    if (roll) desc = `rolled ${roll.join(' + ')} = ${roll[0] + roll[1] + roll[2]} gold, and +10% Luck`;
+    this.banner(`${L.name}!`, `3 ${FAMILY_NAME[b.line]} in a row: ${desc}`, L.color);
     this.audio.play('jackpot');
     this.slot.shake = 0.6;
     const [hx, hy] = this.slot.hpAnchor();
@@ -585,6 +603,36 @@ export class Game {
       case 'chest': C.rewards.push({ n: 3, source: 'trove', min: 'rare' }); break;
       case 'clover': P.luck = Math.round((P.luck + 0.1) * 100) / 100; C.freeSpin = true; break;
       case 'skull': if (C.e.alive) this.damageEnemy(6, true); break;
+      case 'bomb': P.blast++; this.audio.play('crit'); if (C.e.alive) this.damageEnemy(10, true); break;
+      case 'dice': {
+        const [gx, gy] = this.slot.goldAnchor();
+        this.gainGold(roll[0] + roll[1] + roll[2], gx, gy - 14);
+        P.luck = Math.round((P.luck + 0.1) * 100) / 100;
+        break;
+      }
+      case 'wild':
+        P.might++; P.guard++; P.armor += 1; P.fortune++;
+        P.luck = Math.round((P.luck + 0.1) * 100) / 100;
+        break;
+    }
+    if (C.phase === 'resolving') C.nextAt = this.time + 1.25;
+  }
+
+  applySpecial(b) {
+    const C = this.combat, P = this.player, S = SPECIAL_LINE[b.special], e = C.e;
+    this.slot.highlightCells(b.cells);
+    this.banner(`${S.name}!`, `3 ${SYMBOLS[b.special].name}s in a row: ${S.desc}`, S.color);
+    this.audio.play('jackpot');
+    this.slot.shake = 0.8;
+    switch (b.special) {
+      case 'dagger':
+        P.venom++;
+        if (e.alive) { e.poison += 5; this.ui.float(`Poison ${e.poison}`, ...this.enemyScreen(0.7), '#8aff6a', this.time, { size: 14 }); }
+        break;
+      case 'vial': P.lifesteal++; break;
+      case 'charm': C.blessed = true; break;
+      case 'mimic': C.rewards.push({ n: 3, source: 'hoard', min: 'epic' }); break;
+      case 'skull_cursed': if (e.alive) this.damageEnemy(12, true); break;
     }
     if (C.phase === 'resolving') C.nextAt = this.time + 1.25;
   }
@@ -610,6 +658,7 @@ export class Game {
       case 'coin': C.doubleGold = true; break;
       case 'shield': P.armor += 3; this.ui.float('+3 Armor', hx, hy - 22, '#9ab8ff', this.time, { size: 13 }); this.audio.play('block'); break;
       case 'potion': this.heal(3, 0, 0); break;
+      case 'bomb': C.chain = true; break;
     }
     C.nextAt = this.time + 1.1;
   }
@@ -619,6 +668,7 @@ export class Game {
     if (!C.queue.length) { this.finishResolve(); return; }
     const item = C.queue.shift();
     if (item.line) { this.applyLine(item); return; }
+    if (item.special) { this.applySpecial(item); return; }
     if (item.scatter) { this.applyScatter(item); return; }
     const [row, reel] = item;
     let id = C.grid[row][reel];
@@ -639,6 +689,7 @@ export class Game {
     let times = 1;
     if (s.twice && Math.random() < s.twice) times++;
     if (C.charm && !s.charm && Math.random() < 0.25) times++;
+    if (C.blessed) times++;
     if (times > 1) this.ui.float('x2!', ax + 22, ay - 20, '#7aff8a', this.time, { size: 14 });
     for (let t = 0; t < times; t++) this.applySymbol(id, s, ax, ay, t);
     C.nextAt = this.time + (times > 1 ? 0.5 : 0.34);
@@ -649,6 +700,7 @@ export class Game {
     const oy = rep * -14;
     if (s.dmg && e.alive) {
       let dmg = s.dmg + P.might;
+      if (s.aoe) { dmg += 2 * P.blast; if (C.chain) dmg *= 2; }
       let crit = false;
       if (C.frenzy || (s.crit && Math.random() < s.crit)) { dmg *= 2; crit = true; }
       if (e.def.armor && !C.enemyBlocked) {
@@ -658,7 +710,7 @@ export class Game {
       }
       this.damageEnemy(dmg, crit);
       if (dmg > 0) C.dealt++;
-      if (s.poison) { e.poison += s.poison; this.ui.float(`Poison ${e.poison}`, ...this.enemyScreen(0.7), '#8aff6a', this.time, { size: 12 }); }
+      if (s.poison) { e.poison += s.poison + P.venom; this.ui.float(`Poison ${e.poison}`, ...this.enemyScreen(0.7), '#8aff6a', this.time, { size: 12 }); }
     }
     if (s.armor) {
       let a = s.armor + (s.guard && C.swordsLanded ? s.guard : 0);
@@ -744,6 +796,7 @@ export class Game {
     const C = this.combat, e = C.e;
     this.slot.highlight(-1, -1);
     if (C.vials && C.dealt) this.heal(Math.min(3, C.vials * C.dealt), 0, 0);
+    if (this.player.lifesteal && C.dealt) this.heal(this.player.lifesteal, 0, 0);
     if (!e.alive) return;
     if (e.poison > 0) {
       e.hp -= e.poison;
@@ -1287,7 +1340,8 @@ export class Game {
     // run stats from paylines: Might / Guard / Fortune / Luck
     let sx = 8;
     for (const [v, icon, label, col] of [[P.might, 'sword2', `+${P.might}`, '#ff9a7a'], [P.guard, 'shield2', `+${P.guard}`, '#9ab8ff'],
-      [P.fortune, 'coin_gold', `+${P.fortune}`, '#ffd24a'], [P.luck, 'clover', `+${Math.round(P.luck * 100)}%`, '#7aff8a']]) {
+      [P.fortune, 'coin_gold', `+${P.fortune}`, '#ffd24a'], [P.luck, 'clover', `+${Math.round(P.luck * 100)}%`, '#7aff8a'],
+      [P.blast, 'bomb', `+${P.blast}`, '#ff9a4a'], [P.venom, 'dagger', `+${P.venom}`, '#8aff6a'], [P.lifesteal, 'vial', `+${P.lifesteal}`, '#ff6a8a']]) {
       if (!v) continue;
       U.icon(this.a.icons48[icon], sx, 29, 16);
       U.text(label, sx + 18, 41, { size: 10, color: col });
@@ -1453,7 +1507,7 @@ export class Game {
 
   drawRewardUI(now, ptr) {
     const U = this.ui, W = this.W;
-    const title = { chest: 'TREASURE!', loot: 'LOOT!', boss: 'VICTORY SPOILS', trove: 'TREASURE TROVE!', bonus: 'BONUS CARD!' }[this.reward.source] || 'CHOOSE A CARD';
+    const title = { chest: 'TREASURE!', loot: 'LOOT!', boss: 'VICTORY SPOILS', trove: 'TREASURE TROVE!', bonus: 'BONUS CARD!', hoard: 'MIMIC HOARD!' }[this.reward.source] || 'CHOOSE A CARD';
     U.text(title, W / 2, 34, { size: 18, align: 'center', color: '#ffd878', spacing: 2 });
     const more = this.rewardQueue ? this.rewardQueue.length : 0;
     U.text(more ? `Choose a card to add to your reels  (+${more} more after this)` : 'Choose a card to add to your reels',
@@ -1517,52 +1571,62 @@ export class Game {
 
   drawBag(now, ptr) {
     const U = this.ui, W = this.W, H = this.H, P = this.player;
-    const counts = {};
-    for (const s of P.bag) counts[s] = (counts[s] || 0) + 1;
-    const ids = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-    const cols = 3, rowH = 26, pw = Math.min(W - 16, 620);
-    const reelH = Math.ceil(ids.length / cols) * rowH;
-    const payH = 16 + 7 * 11 + 8;
-    const ph = Math.min(H - 12, 34 + reelH + 10 + payH + 34);
-    const x0 = (W - pw) / 2, y0 = (H - ph) / 2;
+    const pw = Math.min(W - 16, 620), ph = H - 16, x0 = (W - pw) / 2, y0 = 8;
     U.g.fillStyle = 'rgba(0,0,0,0.55)'; U.g.fillRect(0, 0, W, H);
     U.panel(x0, y0, pw, ph);
-    U.text(`YOUR REELS  (${P.bag.length} symbols)`, W / 2, y0 + 18, { size: 13, align: 'center', color: '#ffd878' });
-    ids.forEach((id, i) => {
-      const cx = x0 + 10 + (i % cols) * (pw / cols), cy = y0 + 28 + Math.floor(i / cols) * rowH;
-      const s = SYMBOLS[id];
-      U.icon(this.a.icons48[s.icon], cx, cy, 22);
-      U.text(`${counts[id]}x ${s.name}`, cx + 26, cy + 9, { size: 10, color: RARITY[s.rarity].color === '#8b919c' ? '#f2ead8' : RARITY[s.rarity].color });
-      U.text(s.desc, cx + 26, cy + 19, { size: 7, bold: false, color: '#cfc4b0' });
-    });
-    // paytable
-    const py = y0 + 34 + reelH + 6;
-    U.g.fillStyle = '#4c4f5a'; U.g.fillRect(x0 + 10, py - 4, pw - 20, 1);
-    const colW = (pw - 20) / 2;
-    U.text('3 IN A ROW  (permanent, Wildcards fill in)', x0 + 12, py + 8, { size: 9, color: '#ffd878' });
-    U.text(`3 ANYWHERE  (bonus roll, +${Math.round(P.luck * 100)}% Luck)`, x0 + 12 + colW, py + 8, { size: 9, color: '#ffd878' });
-    Object.entries(LINE_BONUS).forEach(([f, L], i) => {
-      const x = x0 + 12, y = py + 20 + i * 11;
-      U.icon(this.a.icons48[FAMILY_ICON[f]], x, y - 8, 10);
-      U.text(L.name, x + 13, y, { size: 8, color: L.color });
-      U.text(L.short, x + 98, y, { size: 8, bold: false, color: '#cfc4b0' });
-    });
-    Object.entries(SCATTER_BONUS).forEach(([f, S], i) => {
-      const x = x0 + 12 + colW, y = py + 20 + i * 11;
-      const pct = Math.round(Math.min(1, S.chance + P.luck) * 100);
-      U.icon(this.a.icons48[FAMILY_ICON[f]], x, y - 8, 10);
-      U.text(S.name, x + 13, y, { size: 8, color: S.color });
-      U.text(`${pct}%`, x + 98, y, { size: 8, color: '#f2ead8' });
-      U.text(S.desc, x + 122, y, { size: 8, bold: false, color: '#cfc4b0' });
-    });
+    const pay = this.bagPage === 'pay';
+    U.button('page:reels', `YOUR REELS (${P.bag.length})`, W / 2 - 134, y0 + 7, 130, 18, ptr, { size: 10, focus: !pay });
+    U.button('page:pay', 'PAYTABLE', W / 2 + 4, y0 + 7, 130, 18, ptr, { size: 10, focus: pay });
+    if (pay) this.drawPaytable(x0, y0 + 32, pw); else this.drawReelList(x0, y0 + 32, pw);
     const stats = [];
     if (P.might) stats.push(`Might +${P.might}`);
     if (P.guard) stats.push(`Guard +${P.guard}`);
     if (P.fortune) stats.push(`Fortune +${P.fortune}`);
     if (P.luck) stats.push(`Luck +${Math.round(P.luck * 100)}%`);
+    if (P.blast) stats.push(`Blast +${P.blast}`);
+    if (P.venom) stats.push(`Venom +${P.venom}`);
+    if (P.lifesteal) stats.push(`Lifesteal +${P.lifesteal}`);
     if (P.relics.size) stats.push(`Relics: ${[...P.relics].map(r => CARDS[r].name).join(', ')}`);
     if (stats.length) U.text(stats.join('   '), W / 2, y0 + ph - 24, { size: 9, align: 'center', color: '#e8c070' });
-    U.button('close', 'Close', W / 2 - 30, y0 + ph - 16, 60, 13, ptr, { size: 9 });
+    U.text(pay ? 'TAB / ESC: close' : 'TAB: paytable   ESC: close', x0 + pw - 10, y0 + ph - 7, { size: 8, align: 'right', color: '#8a8290', bold: false });
+    U.button('close', 'Close', W / 2 - 30, y0 + ph - 17, 60, 13, ptr, { size: 9 });
+  }
+
+  drawReelList(x0, y0, pw) {
+    const U = this.ui, P = this.player;
+    const counts = {};
+    for (const s of P.bag) counts[s] = (counts[s] || 0) + 1;
+    const ids = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    const cols = 3, rowH = 28;
+    ids.forEach((id, i) => {
+      const cx = x0 + 12 + (i % cols) * (pw / cols), cy = y0 + 4 + Math.floor(i / cols) * rowH;
+      const s = SYMBOLS[id];
+      U.icon(this.a.icons48[s.icon], cx, cy, 22);
+      U.text(`${counts[id]}x ${s.name}`, cx + 26, cy + 9, { size: 10, color: RARITY[s.rarity].color === '#8b919c' ? '#f2ead8' : RARITY[s.rarity].color });
+      U.text(s.desc, cx + 26, cy + 19, { size: 7, bold: false, color: '#cfc4b0' });
+    });
+  }
+
+  drawPaytable(x0, y0, pw) {
+    const U = this.ui, P = this.player;
+    const colW = (pw - 24) / 2, xl = x0 + 12, xr = x0 + 12 + colW + 12;
+    const row = (x, y, icon, name, color, desc, pct) => {
+      U.icon(this.a.icons48[icon], x, y - 8, 10);
+      U.text(name, x + 13, y, { size: 8, color });
+      if (pct !== undefined) {
+        U.text(`${pct}%`, x + 104, y, { size: 8, color: '#f2ead8' });
+        U.text(desc, x + 130, y, { size: 8, bold: false, color: '#cfc4b0' });
+      } else U.text(desc, x + 104, y, { size: 8, bold: false, color: '#cfc4b0' });
+    };
+    let y = y0 + 8;
+    U.text('3 IN A ROW  (permanent, Wildcards fill in)', xl, y, { size: 9, color: '#ffd878' });
+    Object.entries(LINE_BONUS).forEach(([f, L], i) => row(xl, y + 15 + i * 13, FAMILY_ICON[f], L.name, L.color, L.short));
+    U.text('SAME RARE SYMBOL x3 IN A ROW  (extra bonus)', xr, y, { size: 9, color: '#ffd878' });
+    Object.entries(SPECIAL_LINE).forEach(([id, S], i) => row(xr, y + 15 + i * 13, SYMBOLS[id].icon, S.name, S.color, S.short));
+    y += 15 + Object.keys(SPECIAL_LINE).length * 13 + 8;
+    U.text(`3 ANYWHERE  (bonus roll, +${Math.round(P.luck * 100)}% Luck)`, xr, y, { size: 9, color: '#ffd878' });
+    Object.entries(SCATTER_BONUS).forEach(([f, S], i) =>
+      row(xr, y + 15 + i * 13, FAMILY_ICON[f], S.name, S.color, S.desc, Math.round(Math.min(1, S.chance + P.luck) * 100)));
   }
 
   drawMap() {

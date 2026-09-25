@@ -47,11 +47,12 @@ export const FAMILY = {
   chest: 'chest', mimic: 'chest',
   clover: 'clover', charm: 'clover',
   skull: 'skull', skull_cursed: 'skull',
+  bomb: 'bomb', dice: 'dice',
 };
 export const FAMILY_NAME = { blade: 'Swords', shield: 'Shields', potion: 'Potions', coin: 'Coins', chest: 'Treasure',
-  clover: 'Clovers', skull: 'Curses' };
+  clover: 'Clovers', skull: 'Curses', bomb: 'Bombs', dice: 'Dice', wild: 'Wildcards' };
 export const FAMILY_ICON = { blade: 'sword', shield: 'shield', potion: 'potion', coin: 'coin', chest: 'chest',
-  clover: 'clover', skull: 'skull' };
+  clover: 'clover', skull: 'skull', bomb: 'bomb', dice: 'dice', wild: 'wild' };
 
 // 3 of a family across a row (either payline; Wildcards fill in): a permanent boost for the run.
 export const LINE_BONUS = {
@@ -62,6 +63,18 @@ export const LINE_BONUS = {
   chest:  { name: 'TREASURE TROVE', color: '#ffb84a', desc: 'A Rare-or-better card after this fight', short: 'Rare+ card after the fight' },
   clover: { name: 'LUCKY STREAK',   color: '#7aff8a', desc: '+10% Luck and a free spin', short: '+10% Luck, free spin' },
   skull:  { name: 'DOOM',           color: '#c86aff', desc: 'The curse rebounds: 6 damage to the foe', short: '6 damage to the foe' },
+  bomb:   { name: 'KABOOM',         color: '#ff9a4a', desc: '10 damage now, and +1 Blast: bombs deal +2 for the rest of the run', short: '10 damage, +1 Blast (bombs +2)' },
+  dice:   { name: 'HIGH ROLLER',    color: '#e8e0ff', desc: 'Roll 3 dice for gold, and +10% Luck', short: 'Roll 3 dice for gold, +10% Luck' },
+  wild:   { name: 'MEGA JACKPOT',   color: '#ff6ae0', desc: '+1 Might, +1 Guard, +1 Fortune and +10% Luck', short: '+1 Might, Guard, Fortune, +10% Luck' },
+};
+
+// 3 of the SAME rare symbol in a row: an extra bonus on top of its family's line.
+export const SPECIAL_LINE = {
+  dagger:       { name: 'VENOM',        color: '#8aff6a', desc: '5 Poison now, and daggers poison +1 more for the run', short: '5 Poison, daggers +1 Poison' },
+  vial:         { name: 'BLOODLUST',    color: '#ff5a7a', desc: '+1 Lifesteal: heal 1 after every spin that hits', short: '+1 Lifesteal: heal on every hit spin' },
+  charm:        { name: 'BLESSED',      color: '#7affc8', desc: 'Every symbol this spin triggers twice', short: 'Every symbol triggers twice' },
+  mimic:        { name: 'MIMIC HOARD',  color: '#ffb84a', desc: 'An Epic-or-better card after this fight', short: 'Epic+ card after the fight' },
+  skull_cursed: { name: "DEATH'S DOOR", color: '#c86aff', desc: '12 damage to the foe', short: '12 damage to the foe' },
 };
 
 // 3+ of a family anywhere on the reels in one spin: a bonus roll (Luck adds to the odds).
@@ -72,6 +85,7 @@ export const SCATTER_BONUS = {
   coin:   { name: 'DOUBLE GOLD', chance: 0.5,  color: '#ffd24a', desc: 'Coins pay double this spin' },
   shield: { name: 'SHIELD WALL', chance: 0.5,  color: '#8ab0ff', desc: '+3 Armor' },
   potion: { name: 'SECOND WIND', chance: 0.5,  color: '#6aff8a', desc: 'Heal 3' },
+  bomb:   { name: 'CHAIN REACTION', chance: 0.5, color: '#ff9a4a', desc: 'Bombs deal double this spin' },
 };
 
 // Card upgrades (cards sheet). type: add | upgrade | passive
