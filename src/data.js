@@ -7,6 +7,7 @@ export const RARITY = {
   rare:      { label: 'RARE',      color: '#4c5fe0', w: 14 },
   epic:      { label: 'EPIC',      color: '#a64ce0', w: 5 },
   legendary: { label: 'LEGENDARY', color: '#e03636', w: 1.2 },
+  secret:    { label: 'SECRET',    color: '#b070ff', w: 1 },        // only behind cracked walls, never in the normal pools
 };
 
 // Reel symbols. Effects are resolved in game.js.
@@ -245,6 +246,23 @@ export const CARDS = {
                       desc: 'Foes you defeat drop 50% more gold.' },
   treasure_map:     { name: 'Treasure Map',     rarity: 'uncommon',  type: 'passive', relic: 'treasure_map',
                       desc: 'Every chest on the floor is marked on your map, and chests hold 6 more gold.' },
+  // secret-room treasures (secret: only ever found behind cracked walls)
+  powder_keg:       { name: 'Powder Keg',       rarity: 'secret',    type: 'passive', relic: 'powder_keg', secret: true,
+                      desc: 'Bombs and blasts deal 4 more damage.' },
+  demolition:       { name: 'Demolition Charge', rarity: 'secret',   type: 'passive', relic: 'demolition', secret: true,
+                      desc: 'Every floor hides a cracked wall, and blowing one open costs no Bomb.' },
+  cursed_crown:     { name: 'Cursed Crown',     rarity: 'secret',    type: 'passive', relic: 'cursed_crown', secret: true,
+                      desc: 'All gold you gain is doubled - but every fight opens with 2 damage to you.' },
+  phoenix_egg:      { name: 'Phoenix Egg',      rarity: 'secret',    type: 'passive', relic: 'phoenix_egg', secret: true,
+                      desc: 'The first time you would die it hatches: rise at full health with +3 max HP.' },
+  skeleton_key:     { name: 'Skeleton Key',     rarity: 'secret',    type: 'passive', relic: 'skeleton_key', secret: true,
+                      desc: 'Chests offer 4 cards and can never be Mimics.' },
+  fools_gold:       { name: "Fool's Gold",      rarity: 'secret',    type: 'passive', relic: 'fools_gold', secret: true,
+                      desc: 'Merchants take your fake coin: everything costs half.' },
+  philosopher_stone: { name: "Philosopher's Stone", rarity: 'secret', type: 'passive', relic: 'philosopher_stone', secret: true,
+                      desc: 'After every fight, heal 1 HP for every 10 gold you carry (up to 6).' },
+  eye_of_depths:    { name: 'Eye of the Depths', rarity: 'secret',   type: 'passive', relic: 'eye_of_depths', secret: true,
+                      desc: 'Every floor is mapped the moment you arrive - cracked walls included.' },
   // spells (cls: only ever offered on a Mage run)
   arcane_spark:     { name: 'Arcane Spark',     rarity: 'common',    type: 'add',     sym: 'spark', cls: 'mage' },
   arcane_bolt:      { name: 'Arcane Bolt',      rarity: 'uncommon',  type: 'upgrade', from: ['spark'],            to: 'bolt_arcane', cls: 'mage' },
@@ -267,9 +285,11 @@ export const CARD_ICON = { horseshoe: 'horseshoe', heartstone: 'heartstone', whe
   holy_water: 'holy_water', four_leaf: 'clover4', pixie_jar: 'pixie_jar', ashen_plume: 'ashen_plume',
   trinity_sigil: 'trinity', hungry_idol: 'hungry_idol', blood_pact: 'blood_pact', heartfruit: 'heartfruit',
   ember_core: 'ember_core', lucky_cat: 'lucky_cat', war_drum: 'war_drum', hourglass: 'hourglass', midas_glove: 'midas_glove',
-  treasure_map: 'treasure_map' };
+  treasure_map: 'treasure_map', powder_keg: 'powder_keg', demolition: 'demolition', cursed_crown: 'cursed_crown',
+  phoenix_egg: 'phoenix_egg', skeleton_key: 'skeleton_key', fools_gold: 'fools_gold', philosopher_stone: 'philosopher_stone',
+  eye_of_depths: 'eye_of_depths' };
 
-export const CARD_PRICE = { common: 8, uncommon: 14, rare: 22, epic: 34, legendary: 50 };
+export const CARD_PRICE = { common: 8, uncommon: 14, rare: 22, epic: 34, legendary: 50, secret: 40 };
 
 // The Knight's starting reel bag ("Balanced").
 export const KNIGHT_BAG = ['sword', 'sword', 'sword', 'sword', 'shield', 'shield', 'shield', 'potion', 'potion',

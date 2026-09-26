@@ -3,9 +3,9 @@
 //
 // Grid: cell (x, y) is centred at world (x*CELL, 0, y*CELL); y grows toward +Z.
 // Directions: 0 = north (-Z), 1 = east (+X), 2 = south (+Z), 3 = west (-X).
-import { rng, trs } from './math.js?v=20260926032940';
-import { Batcher } from './gl.js?v=20260926032940';
-import { BIOMES, ELITES, BOSSES, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926032940';
+import { rng, trs } from './math.js?v=20260926034648';
+import { Batcher } from './gl.js?v=20260926034648';
+import { BIOMES, ELITES, BOSSES, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926034648';
 
 export const CELL = 2.0;
 export const WALL_H = 2.6;
@@ -166,7 +166,63 @@ export function generate(floor, seed, opts = {}) {
     entities.push({ type: 'enemy', kind: R.pick(B.enemies), x, y, elite: false });
     placed++;
   }
-  return { floor, biome, W, H, grid: g, at, exits, start, stairs, entities, dist, occupied, seed };
+  // a cracked wall (only when you carry a bomb, or the Demolition Charge): at the end of a free dead end, the
+  // solid cell straight ahead hides a rune circle - blow the wall and it leads to a secret room
+  let secret = null;
+  if (opts.secret) {
+    const cand = deadEndsAll.filter(([x, y]) => !occupied.has(key(x, y)) && !(x === start.x && y === start.y) &&
+                                                !(x === stairs.x && y === stairs.y))
+      .map(([x, y]) => { const d = (exits(x, y)[0] + 2) % 4; return { x, y, d, ax: x + DX[d], ay: y + DY[d] }; })
+      .filter(s => s.ax > 0 && s.ay > 0 && s.ax < W - 1 && s.ay < H - 1 && !at(s.ax, s.ay));
+    if (!cand.length) {             // no free dead end: dig a one-cell spur off a corridor and crack its end wall
+      for (const [x, y] of cells) {
+        if (occupied.has(key(x, y)) || dist[y * W + x] < 2) continue;
+        for (let d = 0; d < 4; d++) {
+          const sx = x + DX[d], sy = y + DY[d], ax = sx + DX[d], ay = sy + DY[d];
+          if (sx < 1 || sy < 1 || sx > W - 2 || sy > H - 2 || ax < 1 || ay < 1 || ax > W - 2 || ay > H - 2) continue;
+          if (at(sx, sy) || at(ax, ay)) continue;
+          if ([0, 1, 2, 3].some(k => k !== (d + 2) % 4 && at(sx + DX[k], sy + DY[k]))) continue;
+          cand.push({ x: sx, y: sy, d, ax, ay, from: [x, y] });
+        }
+      }
+      if (cand.length) {
+        const c = R.pick(cand);
+        cand.length = 0;
+        cand.push(c);
+        g[c.y * W + c.x] = 1;
+        dist[c.y * W + c.x] = dist[c.from[1] * W + c.from[0]] + 1;
+        delete c.from;
+      }
+    }
+    if (cand.length) {
+      secret = R.pick(cand);
+      secret.kind = R.pick(['vault', 'shop', 'shrine']);
+      occupied.add(key(secret.x, secret.y));
+    }
+  }
+  return { floor, biome, W, H, grid: g, at, exits, start, stairs, entities, dist, occupied, seed, secret };
+}
+
+// A secret room behind a cracked wall: a short hall with the way back (a rune circle) behind you and the
+// treasure at its end - a vault of chests, a secret shop, or a shrine whose altar holds the unique relics.
+export function generateSecret(kind, floor, seed) {
+  const W = 7, H = 9, cx = 3;
+  const g = new Uint8Array(W * H);
+  const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : g[y * W + x];
+  for (let y = 1; y <= 7; y++) g[y * W + cx] = 1;
+  if (kind === 'vault') { g[3 * W + cx - 1] = 1; g[3 * W + cx + 1] = 1; }          // two side niches
+  const exits = (x, y) => [0, 1, 2, 3].filter(d => at(x + DX[d], y + DY[d]));
+  const dist = new Int32Array(W * H).fill(-1);
+  for (let y = 1; y <= 7; y++) dist[y * W + cx] = 7 - y;
+  const entities = [{ type: 'teleporter', x: cx, y: 7, back: true }];
+  if (kind === 'vault') entities.push({ type: 'chest', x: cx - 1, y: 3, face: 1, secret: 'rare' },
+                                      { type: 'chest', x: cx + 1, y: 3, face: 3, secret: 'rare' },
+                                      { type: 'chest', x: cx, y: 1, face: 2, secret: 'relic' });
+  else if (kind === 'shop') entities.push({ type: 'merchant', x: cx, y: 1, secret: true });
+  else entities.push({ type: 'altar', x: cx, y: 1 });
+  return { floor, biome: { vault: 'vault', shop: 'crypt', shrine: 'grotto' }[kind], W, H, grid: g, at, exits,
+           start: { x: cx, y: 6, dir: 0 }, stairs: { x: -9, y: -9 }, entities, dist,
+           occupied: new Set(entities.map(e => `${e.x},${e.y}`)), seed, secretRoom: kind };
 }
 
 // The boss hall: a corridor opening into a long pillared hall, the boss waiting at its far end with the
@@ -203,7 +259,15 @@ export function build(level, models) {
   const B = BIOMES[biome];
   const bat = new Batcher();
   const lights = [];
-  const put = (name, x, y, z, ry = 0, s = 1) => bat.add(models[name], trs(x, y, z, ry, 0, 0, s));
+  // the cracked wall (and anything hung on it) goes in its own batch, drawn until the wall is blown; the
+  // alcove behind it in another, drawn after
+  const S = level.secret;
+  const sEdge = S ? [S.x * CELL + DX[S.d] * CELL / 2, S.y * CELL + DY[S.d] * CELL / 2] : null;
+  const crackBat = new Batcher(), alcoveBat = new Batcher();
+  const put = (name, x, y, z, ry = 0, s = 1) => {
+    const onCrack = sEdge && Math.abs(x - sEdge[0]) < 0.05 && Math.abs(z - sEdge[1]) < 0.05;
+    (onCrack ? crackBat : bat).add(models[name], trs(x, y, z, ry, 0, 0, s));
+  };
   const blocked = new Set(level.entities.map(e => `${e.x},${e.y}`));
 
   // weighted variant lists (plain pieces most often, the painted set-pieces now and then)
@@ -249,8 +313,8 @@ export function build(level, models) {
       }
     }
   }
-  // stairs
-  {
+  // stairs (a secret room has none)
+  if (level.stairs.x >= 0) {
     const [sx, , sz] = cellPos(level.stairs.x, level.stairs.y);
     put('stairs', sx, 0, sz, R.int(0, 3) * Math.PI / 2);
     lights.push({ pos: [sx, 0.4, sz], col: [0.25, 0.35, 0.6], radius: 3.5, flicker: 0 });
@@ -466,5 +530,15 @@ export function build(level, models) {
       put(R.pick(['ruin_tower0', 'ruin_tower1']), cx, -0.5, cz, R() * 6, 1 + R() * 0.8);
     }
   }
-  return { batches: bat.build(), lights };
+  if (S) {
+    crackBat.add(models.crack_wall, trs(sEdge[0], 0, sEdge[1], wallRot(S.d), 0, 0, 1));
+    for (const l of lights) if (Math.hypot(l.pos[0] - sEdge[0], l.pos[2] - sEdge[1]) < 0.9) l.secretWall = true;   // a torch on it
+    const [ax, , az] = cellPos(S.ax, S.ay);
+    alcoveBat.add(models[R.pick(floors)], trs(ax, 0, az, 0, 0, 0, 1));
+    if (KIT.ceil) alcoveBat.add(models[KIT.ceil], trs(ax, 0, az, 0, 0, 0, 1));
+    for (let d = 0; d < 4; d++) {
+      if (d !== (S.d + 2) % 4) alcoveBat.add(models[R.pick(walls)], trs(ax + DX[d] * CELL / 2, 0, az + DY[d] * CELL / 2, wallRot(d), 0, 0, 1));
+    }
+  }
+  return { batches: bat.build(), lights, crack: crackBat.build(), alcove: alcoveBat.build() };
 }

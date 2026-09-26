@@ -31,6 +31,7 @@ const SFX = {
   powder: A => { SFX.slash(A); A.noise(0.26, { vol: 0.55, freq: 1800, q: 0.4, slide: 0.2, delay: 0.05 }); A.tone(80, 0.18, { vol: 0.24, slide: 0.4, delay: 0.05 }); },
   cursehit: A => { A.tone(200, 0.32, { vol: 0.1, type: 'sawtooth', slide: 0.5 }); A.tone(151, 0.32, { vol: 0.07, slide: 0.6, delay: 0.05 }); A.noise(0.3, { vol: 0.12, freq: 500, q: 3 }); },
   fuse: A => { A.noise(0.36, { vol: 0.07, freq: 5200, q: 4 }); A.noise(0.36, { vol: 0.1, freq: 400, q: 0.8, slide: 2.5 }); },
+  warp: A => { A.tone(196, 0.9, { vol: 0.1, type: 'sine', slide: 4 }); A.noise(0.8, { vol: 0.1, freq: 2600, q: 2, slide: 2.2 }); arp(A, [523, 784, 1047, 1568, 2093], 0.07, { vol: 0.06, type: 'triangle', dur: 0.35, delay: 0.1 }); },
   explode: A => { A.noise(0.9, { vol: 0.65, freq: 220, type: 'lowpass', slide: 0.45 }); A.tone(66, 0.7, { vol: 0.45, type: 'sine', slide: 0.4 }); A.noise(0.2, { vol: 0.24, freq: 3000 }); crackle(A, 8, 0.6, { vol: 0.08 }); },
   cackle: A => { [520, 440, 540, 400, 300].forEach((f, i) => A.tone(f, 0.08, { vol: 0.06, type: 'square', slide: 0.8, delay: i * 0.075 })); A.noise(0.4, { vol: 0.08, freq: 500, q: 4 }); },
   shieldup: A => { A.tone(400, 0.25, { vol: 0.13, type: 'triangle', slide: 1.5 }); A.tone(1200, 0.3, { vol: 0.05, type: 'sine', delay: 0.05 }); A.noise(0.12, { vol: 0.1, freq: 4000, q: 3 }); },

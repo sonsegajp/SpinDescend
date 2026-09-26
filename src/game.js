@@ -1,19 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926032940';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926032940';
+import { gl } from './gl.js?v=20260926034648';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926034648';
 const BOSS_SCALE = 2.1;
-import { Renderer, invert } from './render.js?v=20260926032940';
-import { SlotMachine } from './slot.js?v=20260926032940';
-import { CardView } from './cards.js?v=20260926032940';
-import { UI, SERIF } from './ui.js?v=20260926032940';
-import { Animator } from './anim.js?v=20260926032940';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926032940';
-import { is } from './input.js?v=20260926032940';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260926032940';
+import { Renderer, invert } from './render.js?v=20260926034648';
+import { SlotMachine } from './slot.js?v=20260926034648';
+import { CardView } from './cards.js?v=20260926034648';
+import { UI, SERIF } from './ui.js?v=20260926034648';
+import { Animator } from './anim.js?v=20260926034648';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926034648';
+import { is } from './input.js?v=20260926034648';
+import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926034648';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
          BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926032940';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926034648';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -92,6 +92,14 @@ export class Game {
     if (q.has('map')) this.showMap = true;
     if (q.get('relics')) for (const r of q.get('relics').split(',')) if (CARDS[r]) this.applyCard(r);   // ?relics=war_drum,hourglass
     if (q.get('reels')) { const b = q.get('reels').split(',').filter(id => SYMBOLS[id]); if (b.length) this.player.bag = b; }  // ?reels=sword,mirror
+    if (q.has('secret')) {                            // ?secret[=vault|shop|shrine]: stand at a cracked wall (&blast, &enter)
+      if (!this.player.bag.includes('bomb')) this.player.bag.push('bomb');
+      this.loadFloor(this.floor, this.runSeed + this.floor * 7919);
+      const S = this.level.secret;
+      if (S) { if (q.get('secret')) S.kind = q.get('secret'); this.enterCell(S.x, S.y, S.d); this.reveal(); }
+      if (q.has('blast')) this.later(0.3, () => { this.prompt = null; this.blastWall(); });
+      if (q.has('enter')) this.later(2.0, () => { const t = this.entities.find(e => e.type === 'teleporter'); if (t) { this.prompt = null; this.warp(t); } });
+    }
     if (q.has('combat')) {
       const e = this.entities.find(x => x.type === 'enemy' && (!q.get('combat') || x.kind === q.get('combat'))) ||
                 this.entities.find(x => x.type === 'enemy');
@@ -282,12 +290,17 @@ export class Game {
     this.floor = floor;
     const om = this.player && this.player.omen;
     const biomeKey = biomeForFloor(floor, title ? undefined : this.route);
+    const P = this.player;
     this.level = generate(floor, seed, { biome: biomeKey, mimics: om === 'hoard' ? 2 : 1, extraFoes: om === 'swarm' ? 2 : 0,
-                                         bossReady: this.bossReady(biomeKey) });
+                                         bossReady: this.bossReady(biomeKey),
+                                         secret: !title && P && (P.bag.includes('bomb') || P.relics.has('demolition')) });
     this.biome = BIOMES[this.level.biome];
     const built = build(this.level, this.a.models);
     this.static = built.batches;
     this.lights = built.lights;
+    this.crack = built.crack;
+    this.alcove = built.alcove;
+    this.surface = null;
     this.entities = this.level.entities.map(e => this.spawn(e));
     for (const e of this.entities) if (e.type === 'enemy') this.omenFoe(e);
     if (this.player && this.player.relics.has('treasure_map'))
@@ -297,6 +310,8 @@ export class Game {
     this.move = null;
     this.explored = new Set();
     this.reveal();
+    if (P && P.relics.has('eye_of_depths'))
+      for (let y = 0; y < this.level.H; y++) for (let x = 0; x < this.level.W; x++) this.explored.add(`${x},${y}`);
     this.combat = null;
     this.state = title ? 'title' : 'explore';
     this.audio.ambience(this.level.biome);
@@ -320,6 +335,7 @@ export class Game {
     }
     const ent = { ...e, open: 0, opened: false };
     if (e.type === 'merchant') ent.animator = this.makeAnimator('merchant');
+    if (e.type === 'chest' && this.player && this.player.relics.has('skeleton_key')) ent.mimic = false;
     return ent;
   }
 
@@ -513,6 +529,8 @@ export class Game {
       if (e && e.type === 'enemy') what = e.def.name;
       else if (e && e.type === 'chest' && !e.opened) what = 'Chest';
       else if (e && e.type === 'merchant') what = 'Merchant';
+      else if (e && e.type === 'altar' && !e.opened) what = 'Altar';
+      else if (e && e.type === 'teleporter') what = 'Rune circle';
       else if (this.px + DX[d] === this.level.stairs.x && this.py + DY[d] === this.level.stairs.y) what = 'Stairs';
       out.push({ d, rel, what });
     }
@@ -535,6 +553,8 @@ export class Game {
       if (ahead.type === 'enemy') { this.startCombat(ahead); return; }
       if (ahead.type === 'chest' && !ahead.opened) { this.ask('chest', ahead); return; }
       if (ahead.type === 'merchant') { this.ask('merchant', ahead); return; }
+      if (ahead.type === 'altar' && !ahead.opened) { this.ask('altar', ahead); return; }
+      if (ahead.type === 'teleporter') { this.ask('teleport', ahead); return; }
     }
     const back = (this.dir + 2) % 4;
     const opts = this.choices().filter(c => {
@@ -542,6 +562,8 @@ export class Game {
       const e = this.entityAt(this.px + DX[c.d], this.py + DY[c.d]);
       return !(e && e.type === 'chest' && e.opened);
     });
+    const S = this.level.secret;
+    if (opts.length === 0 && S && !S.open && this.px === S.x && this.py === S.y && this.dir === S.d) { this.ask('crack'); return; }
     if (opts.length === 0) { this.ask('deadend'); return; }
     if (opts.length === 1 && !opts[0].what) {
       const d = opts[0].d;
@@ -575,7 +597,12 @@ export class Game {
       if (rel === 'back') { this.prompt = null; this.audio.play('click'); this.moveOn(); }
       return;
     }
-    if (P.kind === 'chest' || P.kind === 'merchant') {
+    if (P.kind === 'crack' && rel === 'use') {
+      if (!this.canBlast()) { this.audio.play('deny'); this.ui.toast('You need a Bomb to blow it open', this.time, '#ff8a6a'); return; }
+      this.prompt = null; this.blastWall(); return;
+    }
+    if (P.kind === 'teleport' && rel === 'use') { this.prompt = null; this.warp(P.ent); return; }
+    if (P.kind === 'chest' || P.kind === 'merchant' || P.kind === 'altar' || P.kind === 'crack' || P.kind === 'teleport') {
       if (rel === 'use') { this.prompt = null; this.interact(P.ent); return; }
       if (rel === 'back') {
         this.prompt = null;
@@ -601,7 +628,7 @@ export class Game {
   updatePrompt(keys, clicks) {
     const P = this.prompt;
     if (this.time - P.t0 < 0.12) return;
-    const use = P.kind === 'chest' || P.kind === 'merchant' || P.kind === 'wayside';
+    const use = ['chest', 'merchant', 'wayside', 'altar', 'crack', 'teleport'].includes(P.kind);
     for (const k of keys) {
       if (is(k, 'turnL') || is(k, 'strafeL')) this.choose('left');
       else if (is(k, 'turnR') || is(k, 'strafeR')) this.choose('right');
@@ -645,6 +672,84 @@ export class Game {
     if (ent.type === 'enemy') this.startCombat(ent);
     else if (ent.type === 'chest' && !ent.opened) this.openChest(ent);
     else if (ent.type === 'merchant') this.openShop(ent);
+    else if (ent.type === 'altar' && !ent.opened) { ent.opened = true; this.audio.play('rare_pick'); this.offerSecret(3); }
+  }
+
+  // =============================================================== cracked walls / secret rooms
+  canBlast() { return this.player.relics.has('demolition') || this.player.bag.includes('bomb'); }
+
+  blastWall() {
+    const S = this.level.secret, P = this.player, L = this.level;
+    const free = P.relics.has('demolition');
+    if (!free) P.bag.splice(P.bag.indexOf('bomb'), 1);
+    S.open = true;
+    L.grid[S.ay * L.W + S.ax] = 1;
+    this.lights = this.lights.filter(l => !l.secretWall);
+    this.lights.push({ pos: [S.ax * CELL, 0.9, S.ay * CELL], col: [0.75, 0.45, 1.15], radius: 3.4, flicker: 0 });
+    this.entities.push(this.spawn({ type: 'teleporter', x: S.ax, y: S.ay }));
+    this.fxEvent('wallblast', this.W / 2, this.H * 0.3);
+    this.camShake = 1.8;
+    this.reveal();
+    this.ui.toast(free ? 'The Demolition Charge brings the wall down!' : 'KABOOM! You spend a Bomb - the wall caves in...', this.time, '#ffb060', 2.4);
+    this.later(1.1, () => this.ui.toast('...and a rune circle glows in the rubble', this.time, '#c890ff', 2.6));
+    this.autoAt = this.time + 1.3;
+  }
+
+  warp(t) {
+    this.audio.play('warp');
+    this.fxEvent('warp', this.W / 2, this.H * 0.35);
+    this.state = 'transition';
+    this.fade = { t: 0, out: true, then: () => { if (t.back) this.leaveSecret(); else this.enterSecret(t); this.fadeIn(); } };
+  }
+
+  enterSecret(t) {
+    const S = this.level.secret;
+    this.surface = { level: this.level, biome: this.biome, stat: this.static, lights: this.lights, crack: this.crack,
+                     alcove: this.alcove, entities: this.entities, explored: this.explored, px: this.px, py: this.py, tele: t };
+    this.level = generateSecret(S.kind, this.floor, this.runSeed + this.floor * 131);
+    this.biome = BIOMES[this.level.biome];
+    const built = build(this.level, this.a.models);
+    this.static = built.batches; this.lights = built.lights; this.crack = built.crack; this.alcove = built.alcove;
+    this.lights.push({ pos: [3 * CELL, 1.4, 1.3 * CELL], col: [1.3, 1.0, 0.6], radius: 5, flicker: 2 },      // the treasure
+                     { pos: [3 * CELL, 0.9, 7 * CELL], col: [0.75, 0.45, 1.15], radius: 3.6, flicker: 0 });  // the way back
+    this.entities = this.level.entities.map(e => this.spawn(e));
+    this.enterCell(this.level.start.x, this.level.start.y, this.level.start.dir);
+    this.explored = new Set();
+    this.reveal();
+    this.audio.ambience(this.level.biome);
+    this.ui.toast({ vault: 'A hidden vault, heaped with the rarest spoils!', shop: 'A secret shop - its dealer trades in forbidden wares',
+                    shrine: 'A forgotten shrine - relics no one else will ever find' }[S.kind], this.time, '#c890ff', 3.2);
+  }
+
+  leaveSecret() {
+    const s = this.surface;
+    this.surface = null;
+    Object.assign(this, { level: s.level, biome: s.biome, static: s.stat, lights: s.lights, crack: s.crack, alcove: s.alcove,
+                          entities: s.entities, explored: s.explored });
+    s.tele.gone = true;                                          // the circle burns out behind you
+    this.enterCell(s.px, s.py, (this.level.secret.d + 2) % 4);
+    this.audio.ambience(this.level.biome);
+    this.ui.toast('The rune circle flickers out behind you', this.time, '#c890ff', 2.4);
+  }
+
+  enterCell(x, y, dir) {
+    this.px = x; this.py = y; this.dir = dir;
+    this.cam = { x: x * CELL, z: y * CELL, yaw: dirYaw(dir), bob: 0 };
+    this.move = null; this.prompt = null;
+    this.state = 'explore';
+    this.autoAt = this.time + 0.7;
+  }
+
+  // the unique relics: up to n the player doesn't own yet (none left -> epic cards instead)
+  offerSecret(n) {
+    const ids = Object.keys(CARDS).filter(id => CARDS[id].secret && !this.player.relics.has(CARDS[id].relic));
+    for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+    if (!ids.length) { this.offerCards(n, 'chest', 'epic'); return; }
+    this.reward = { ids: ids.slice(0, n), source: 'secret' };
+    this.cards.show(this.reward.ids.map(id => ({ id })), this.time);
+    this.cards.keyFocus = -1;
+    this.state = 'reward';
+    this.audio.play('card');
   }
 
   // =============================================================== chests / mimics
@@ -662,17 +767,20 @@ export class Game {
       return;
     }
     this.audio.play('chest');
-    const gold = 4 + this.floor * 2 + Math.floor(Math.random() * 4) + (this.player.relics.has('treasure_map') ? 6 : 0);
+    const gold = (4 + this.floor * 2 + Math.floor(Math.random() * 4)) * (ch.secret ? 2 : 1) + (this.player.relics.has('treasure_map') ? 6 : 0);
+    const n = this.player.relics.has('skeleton_key') ? 4 : 3;
     this.state = 'opening';
     this.later(0.65, () => {
       this.gainGold(gold, this.W / 2, this.H * 0.35);
-      if (this.player.omen === 'hoard') this.rewardQueue = [{ n: 3, source: 'chest' }];
-      this.offerCards(3, 'chest');
+      if (this.player.omen === 'hoard') this.rewardQueue = [{ n, source: 'chest' }];
+      if (ch.secret === 'relic') this.offerSecret(3);
+      else this.offerCards(n, 'chest', ch.secret ? 'rare' : undefined);
     });
   }
 
   gainGold(n, x, y) {
     if (this.player.omen === 'greed') n = Math.round(n * 1.5);
+    if (this.player.relics.has('cursed_crown')) n *= 2;
     this.player.gold += n;
     this.slot.state.gold = this.player.gold;
     this.ui.float(`+${n}`, x, y, '#ffd24a', this.time, { size: 18 });
@@ -697,6 +805,12 @@ export class Game {
       this.later(1.2, () => this.warnAbility());
     } else this.ui.toast(`${e.elite ? 'Elite ' : ''}${def.name} attacks!`, this.time, '#ff8a6a');
     this.audio.voice(e.kind, 'intro');
+    const P = this.player;
+    if (P.relics.has('cursed_crown') && P.hp > 1) {
+      P.hp = Math.max(1, P.hp - 2);
+      this.slot.state.hp = P.hp;
+      this.later(0.5, () => this.ui.toast('The Cursed Crown bites (-2 HP)', this.time, '#c890ff', 2));
+    }
     if (def.note && !e.boss) this.later(0.9, () => this.ui.toast(def.note, this.time, '#c8b8a8'));
     this.player.armor = 0;
     this.slot.state.spinEnabled = true;
@@ -1089,7 +1203,7 @@ export class Game {
 
   cardFx(i, id) {
     const r = CARDS[id].rarity;
-    const tier = ['common', 'uncommon', 'rare', 'epic', 'legendary'].indexOf(r);
+    const tier = r === 'secret' ? 4 : ['common', 'uncommon', 'rare', 'epic', 'legendary'].indexOf(r);
     const [fx, fy] = this.cards.screenFrac(i);
     EVENTS.card(this.fx, fx * this.W, fy * this.H, this.fxCtx(null), RARITY[r].color, Math.max(0, tier));
   }
@@ -1124,6 +1238,7 @@ export class Game {
       if (s.beam && P.hp >= P.maxHp) { dmg += s.beam; I.beam = true; this.ui.float('Dawnlight!', ax, ay - 30, '#a8e8ff', this.time, { size: 13 }); }
       if (s.trigger && Math.random() < s.trigger) { dmg += 3; I.trigger = true; this.ui.float('BANG!', ax, ay - 30, '#ffd24a', this.time, { size: 13 }); }
       if ((s.aoe || s.burn) && P.relics.has('ember_core')) dmg += 2;
+      if (s.aoe && P.relics.has('powder_keg')) dmg += 4;
       let limit = false;
       if (s.limit) { P.limitCount = (P.limitCount || 0) + 1; limit = P.limitCount % s.limit === 0; }
       if (limit) { dmg *= 3; I.limit = true; this.ui.float('OVERDRIVE!', ax, ay - 34, '#ff7a3a', this.time, { size: 15 }); }
@@ -1254,6 +1369,16 @@ export class Game {
       P.hp = Math.ceil(P.maxHp / 2);
       this.slot.state.hp = P.hp;
       this.ui.toast('The Ashen Plume flares - you rise from the ashes!', this.time, '#ffb060', 2.6);
+      this.fxEvent('rebirth', ...this.slot.hpAnchor());
+      return true;
+    }
+    if (P.hp <= 0 && P.relics.has('phoenix_egg')) {
+      P.relics.delete('phoenix_egg');
+      P.maxHp += 3;
+      this.slot.state.maxHp = P.maxHp;
+      P.hp = P.maxHp;
+      this.slot.state.hp = P.hp;
+      this.ui.toast('The Phoenix Egg hatches - you rise in flame at full health!', this.time, '#ffb060', 2.8);
       this.fxEvent('rebirth', ...this.slot.hpAnchor());
       return true;
     }
@@ -1553,6 +1678,10 @@ export class Game {
     }
     const [x, y] = this.enemyScreen(0.5);
     this.gainGold(this.player.relics.has('midas_glove') ? Math.round(g * 1.5) : g, x, y);
+    if (this.player.relics.has('philosopher_stone')) {
+      const h = Math.min(6, Math.floor(this.player.gold / 10), this.player.maxHp - this.player.hp);
+      if (h > 0) this.later(0.8, () => { this.heal(h, 0, 0); this.ui.toast(`The Philosopher's Stone turns gold to life (+${h} HP)`, this.time, '#c890ff', 2.4); });
+    }
     e.gone = true;
     this.combat = null;
     this.player.armor = 0;
@@ -1588,6 +1717,7 @@ export class Game {
     const mage = this.player.cls === 'mage';
     return Object.entries(CARDS).filter(([id, c]) => {
       if (c.cls && c.cls !== this.player.cls) return false;                       // spells are the Mage's alone
+      if (c.secret) return false;                                                 // only ever behind cracked walls
       const makes = c.type === 'add' ? c.sym : c.type === 'upgrade' ? c.to : null;
       if (makes && !this.symOk(makes)) return false;                              // ... and she never takes up steel
       if (c.type === 'upgrade') return c.from.some(f => bag.includes(f));
@@ -1719,8 +1849,16 @@ export class Game {
 
   // =============================================================== merchant
   openShop(m) {
-    const mark = this.player.omen === 'fortune' ? 1.3 : 1;
-    if (!m.stock) m.stock = this.rollCards(3, 0.4).map(id => ({ id, price: Math.round((CARD_PRICE[CARDS[id].rarity] + Math.floor(this.floor / 2) * 2) * mark), sold: false }));
+    const mark = (this.player.omen === 'fortune' ? 1.3 : 1) * (this.player.relics.has('fools_gold') ? 0.5 : 1);
+    if (!m.stock) {
+      let ids = this.rollCards(3, 0.4);
+      if (m.secret) {                                // the secret dealer: two unique relics and two rare-or-better cards
+        const rel = Object.keys(CARDS).filter(id => CARDS[id].secret && !this.player.relics.has(CARDS[id].relic));
+        for (let i = rel.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rel[i], rel[j]] = [rel[j], rel[i]]; }
+        ids = [...rel.slice(0, 2), ...this.rollCards(4 - Math.min(2, rel.length), 1, 'rare')];
+      }
+      m.stock = ids.map(id => ({ id, price: Math.max(1, Math.round((CARD_PRICE[CARDS[id].rarity] + Math.floor(this.floor / 2) * 2) * mark)), sold: false }));
+    }
     this.shop = { m, items: m.stock.filter(it => !it.sold) };
     this.cards.layout(this.W, this.H, this.slot, [0.28, 0.86], 0.78);
     this.cards.show(this.shop.items.map(it => ({ id: it.id, price: it.price })), this.time, 'below', -1);
@@ -1945,6 +2083,7 @@ export class Game {
       ps1: { snap: [320, 180], affine: 0.55, dither: 1 },          // the PS1 look: vertex wobble, affine warp, 15-bit dither
     });
     this.R.drawBatches(this.static);
+    if (this.level.secret) this.R.drawBatches(this.level.secret.open ? this.alcove : this.crack);
 
     // ---- entities
     for (const e of this.entities) {
@@ -1952,6 +2091,14 @@ export class Game {
       if (e.type === 'enemy') this.drawEnemy(e, now);
       else if (e.type === 'chest') this.drawChest(e, now);
       else if (e.type === 'merchant') this.drawMerchant(e, now);
+      else if (e.type === 'teleporter') {
+        this.R.drawModel(this.a.models.teleporter, trs(e.x * CELL, 0, e.y * CELL, 0, 0, 0, 1),
+          { pose: { crystal: { ry: now * 1.3, ty: Math.sin(now * 2) * 0.06 } } });
+      } else if (e.type === 'altar') {
+        const yaw = Math.atan2(this.cam.x - e.x * CELL, this.cam.z - e.y * CELL);
+        this.R.drawModel(this.a.models.secret_altar, trs(e.x * CELL, 0, e.y * CELL, yaw, 0, 0, 1),
+          { tint: e.opened ? [0.55, 0.5, 0.6] : [1, 1, 1] });
+      }
     }
     if (this.state === 'title') this.drawTitleKnight(now);
 
@@ -2192,6 +2339,21 @@ export class Game {
     const P = this.prompt;
     const top = this.slot.screenTop;
     const pop = clamp((now - P.t0) / 0.18, 0, 1);
+    if (P.kind === 'crack' || P.kind === 'teleport' || P.kind === 'altar') {
+      const back = P.kind === 'teleport' && P.ent.back;
+      const t = P.kind === 'crack' ? 'The wall here is cracked...' : P.kind === 'altar' ? 'An altar holds treasures no one else will find.'
+        : back ? 'The rune circle hums - the way back.' : 'A rune circle glows in the rubble.';
+      U.text(t, W / 2, top * 0.2, { size: 14, align: 'center', color: '#d8b8ff', alpha: pop });
+      const can = P.kind !== 'crack' || this.canBlast();
+      if (P.kind === 'crack' && !this.player.relics.has('demolition'))
+        U.text(can ? 'Blowing it open costs 1 Bomb from your reels' : 'You need a Bomb to blow it open', W / 2, top * 0.2 + 14,
+          { size: 10, align: 'center', color: can ? '#ffb060' : '#ff8a6a', alpha: pop, bold: false });
+      const bw = 150, by = top - 34;
+      const label = P.kind === 'crack' ? 'Blow it open  [W]' : P.kind === 'altar' ? 'Approach  [W]' : back ? 'Return  [W]' : 'Step in  [W]';
+      U.button('go:use', label, W / 2 - bw - 6, by, bw, 22, ptr, { size: 12, fill: can ? '#4a1c6a' : '#3a3440', hotFill: can ? '#6a2a8e' : '#3a3440' });
+      U.button('go:back', 'Turn back  [S]', W / 2 + 6, by, bw, 22, ptr, { size: 12 });
+      return;
+    }
     if (P.kind === 'chest' || P.kind === 'merchant' || P.kind === 'wayside') {
       const t = P.kind === 'chest' ? 'A chest blocks the way.' : 'A goblin merchant waves you over.';
       U.text(t, W / 2, top * 0.2, { size: 14, align: 'center', color: '#ffd878', alpha: pop });
@@ -2462,9 +2624,11 @@ export class Game {
     if (this.explored.has(`${L.stairs.x},${L.stairs.y}`)) { g.fillStyle = '#5a9aff'; g.fillRect(x0 + L.stairs.x * cs, y0 + L.stairs.y * cs, cs, cs); }
     for (const e of this.entities) {
       if (e.gone || e.alive === false || (!e.wayside && !this.explored.has(`${e.x},${e.y}`))) continue;   // the merchant is always marked
-      g.fillStyle = e.type === 'enemy' ? '#e04040' : e.type === 'chest' ? '#e0b040' : '#60e060';
+      g.fillStyle = e.type === 'enemy' ? '#e04040' : e.type === 'chest' ? '#e0b040' : e.type === 'teleporter' || e.type === 'altar' ? '#c890ff' : '#60e060';
       g.fillRect(x0 + e.x * cs + 1, y0 + e.y * cs + 1, cs - 2, cs - 2);
     }
+    const S = L.secret;
+    if (S && !S.open && this.player.relics.has('eye_of_depths')) { g.fillStyle = '#c890ff'; g.fillRect(x0 + S.ax * cs, y0 + S.ay * cs, cs, cs); }
     g.fillStyle = '#ffffff';
     g.fillRect(x0 + this.px * cs + 1, y0 + this.py * cs + 1, cs - 2, cs - 2);
     g.fillStyle = '#ffd24a';

@@ -983,6 +983,23 @@ export const EVENTS = {
     if (tier >= 4) for (let i = 0; i < 8; i++) fx.bolt(x, y, x + Math.cos(i * 0.785) * 140, y + Math.sin(i * 0.785) * 90, 0.4, col, 2);
     S.play(['pick', 'pick', 'rare_pick', 'epic_pick', 'legend_pick'][tier]);
   },
+  // a cracked wall blown open: fire, a wall of dust and a rain of masonry
+  wallblast(fx, x, y, S) {
+    fx.flash('#ffd08a', 0.35, 0.7);
+    fx.glow(x, y, 90, 0.5, 'rgba(255,170,60,1)', 1.8);
+    fx.ring(x, y, 10, 160, 0.55, '#ffb04a', 5);
+    fx.burst(x, y, { n: 60, speed: [80, 360], life: [0.4, 1.0], size: [2, 5], col: C.fire, add: true, drag: 2.5 });
+    fx.burst(x, y, { n: 30, speed: [40, 160], life: [1.0, 2.0], size: [8, 16], grow: 2.4, shape: 'smoke', col: C.smoke, g: -20, drag: 1.2, alpha: 0.75, jx: 60, jy: 30 });
+    fx.burst(x, y, { n: 30, speed: [140, 340], life: [0.7, 1.2], size: [3, 6], shape: 'shard', col: ['#4a4652', '#6a6270', '#8a8090'], g: 520, spin: 3 });
+    S.shake(2.2); S.play('explode');
+  },
+  // stepping into a rune circle: a violet flare, rings and rising motes
+  warp(fx, x, y, S) {
+    fx.flash('#c890ff', 0.4, 0.7);
+    fx.glow(x, y, 80, 0.8, 'rgba(190,130,255,1)', 1.6);
+    for (let i = 0; i < 3; i++) fx.ring(x, y, 6 + i * 10, 140 + i * 40, 0.6 + i * 0.15, i ? '#e0c8ff' : '#b070ff', 3);
+    fx.burst(x, y, { n: 50, speed: [40, 200], life: [0.8, 1.5], size: [1.5, 3.5], shape: 'star', col: ['#c890ff', '#ffffff', '#8ad8ff'], add: true, g: -160, drag: 1.5, jx: 80 });
+  },
   rebirth(fx, x, y, S) {
     fx.flash('#ff8a3a', 0.5, 0.6);
     fx.glow(x, y, 50, 0.9, 'rgba(255,150,60,1)', 1.5);

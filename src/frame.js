@@ -5,7 +5,7 @@
 //   3. present: hud + 2D overlay canvas (720p) composited, then the optional CRT
 //      filter (curvature, scanlines, phosphor mask, fringing, bloom, vignette)
 //      into a letterboxed viewport on the display canvas.
-import { gl, program } from './gl.js?v=20260926032940';
+import { gl, program } from './gl.js?v=20260926034648';
 
 const FULL_VS = `#version 300 es
 out vec2 vUV;
