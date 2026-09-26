@@ -1,17 +1,17 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260925231244';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925231244';
-import { Renderer, invert } from './render.js?v=20260925231244';
-import { SlotMachine } from './slot.js?v=20260925231244';
-import { CardView } from './cards.js?v=20260925231244';
-import { UI, SERIF } from './ui.js?v=20260925231244';
-import { Animator } from './anim.js?v=20260925231244';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260925231244';
-import { is } from './input.js?v=20260925231244';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260925231244';
+import { gl } from './gl.js?v=20260925232412';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925232412';
+import { Renderer, invert } from './render.js?v=20260925232412';
+import { SlotMachine } from './slot.js?v=20260925232412';
+import { CardView } from './cards.js?v=20260925232412';
+import { UI, SERIF } from './ui.js?v=20260925232412';
+import { Animator } from './anim.js?v=20260925232412';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260925232412';
+import { is } from './input.js?v=20260925232412';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260925232412';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925231244';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925232412';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -188,6 +188,8 @@ export class Game {
     this.runSeed = this.fixedSeed ?? ((Math.random() * 1e9) | 0);
     this.slot.state.hp = K.hp; this.slot.state.maxHp = K.hp; this.slot.state.gold = 0;
     this.slot.summonPods(false);
+    this.slot.setTheme(this.cls === 'mage' ? 'arcane' : 'classic');
+    this.slot.setStatic([[K.bag[0], 'shield', 'potion'], ['coin', 'skull', 'chest']]);
     this.loadFloor(1, this.runSeed + 1);
     this.fadeIn();
     this.ui.toast('Floor 1 - The Dungeon', this.time, '#e8c878', 2.6);
@@ -292,6 +294,9 @@ export class Game {
     this.cardHover = this.cards.active ? this.cards.update(now, pointer) : -1;
     this.slot.state.spinHover = !!(pointer && this.inRect(pointer, this.slot.spinRect()));
 
+    const song = this.state === 'title' ? 'title' : this.state === 'shop' ? 'shop' : this.level.biome;
+    if (song !== this.songNow) { this.songNow = song; this.audio.song(song); }
+    this.audio.intensity(this.combat ? 'combat' : 'explore');
     const wasBag = this.state === 'bag';
     switch (this.state) {
       case 'title': this.updateTitle(keys, clicks); break;

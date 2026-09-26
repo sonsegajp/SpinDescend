@@ -83,6 +83,25 @@ const SFX = {
   summon: A => { A.noise(0.5, { vol: 0.16, freq: 3500, q: 0.8, slide: 0.5 }); arp(A, [523, 659, 784, 1047], 0.06, { vol: 0.07, type: 'triangle', dur: 0.3 }); A.tone(196, 0.3, { vol: 0.12, type: 'sine', slide: 1.5 }); },
 };
 
+
+// ---------------------------------------------------------------- music
+// A small generative soundtrack, one song per area: a slow pad on the chord of the bar, a bass on the
+// strong beats, a wandering lead on the area's scale in its own instrument, and the area's percussion.
+// Intensity 'combat' adds a driving kick/snare and a busier bass; the merchant and the title have their own.
+const midi = m => 440 * Math.pow(2, (m - 69) / 12);
+export const SONGS = {
+  title:   { bpm: 66, root: 50, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 5, 3, 4], pad: 'triangle', cut: 1100, bass: 'triangle', lead: 'harp', oct: 1, density: 0.5, perc: 'none' },
+  dungeon: { bpm: 70, root: 50, scale: [0, 2, 3, 5, 7, 9, 10], prog: [0, 0, 5, 4, 0, 0, 3, 4], pad: 'triangle', cut: 900, bass: 'triangle', lead: 'square', oct: 1, density: 0.32, perc: 'drip' },
+  mines:   { bpm: 84, root: 45, scale: [0, 3, 5, 7, 10], prog: [0, 0, 2, 3], pad: 'sawtooth', cut: 600, bass: 'triangle', lead: 'pluck', oct: 1, density: 0.42, perc: 'clink' },
+  crypt:   { bpm: 56, root: 47, scale: [0, 1, 3, 5, 7, 8, 10], prog: [0, 1, 0, 5], pad: 'organ', cut: 1300, bass: 'sine', lead: 'choir', oct: 1, density: 0.24, perc: 'bell' },
+  frozen:  { bpm: 62, root: 52, scale: [0, 2, 4, 6, 7, 9, 11], prog: [0, 1, 4, 3], pad: 'sine', cut: 2200, bass: 'sine', lead: 'bell', oct: 2, density: 0.3, perc: 'chime' },
+  magma:   { bpm: 92, root: 40, scale: [0, 1, 4, 5, 7, 8, 10], prog: [0, 0, 1, 0, 5, 4, 1, 0], pad: 'sawtooth', cut: 480, bass: 'sawtooth', lead: 'square', oct: 1, density: 0.28, perc: 'tom' },
+  ruins:   { bpm: 76, root: 55, scale: [0, 2, 4, 5, 7, 9, 10], prog: [0, 4, 5, 3], pad: 'triangle', cut: 1600, bass: 'triangle', lead: 'flute', oct: 1, density: 0.4, perc: 'wind' },
+  grotto:  { bpm: 68, root: 48, scale: [0, 2, 3, 7, 8], prog: [0, 3, 0, 4], pad: 'sine', cut: 1400, bass: 'sine', lead: 'pluck', oct: 2, density: 0.36, perc: 'drip' },
+  vault:   { bpm: 80, root: 53, scale: [0, 2, 4, 5, 7, 9, 11], prog: [0, 3, 4, 0], pad: 'organ', cut: 1500, bass: 'triangle', lead: 'bell', oct: 1, density: 0.34, perc: 'tick' },
+  shop:    { bpm: 104, root: 55, scale: [0, 2, 4, 5, 7, 9, 11], prog: [0, 3, 4, 0], pad: 'triangle', cut: 1800, bass: 'triangle', lead: 'pluck', oct: 1, density: 0.55, perc: 'shaker' },
+};
+
 export class Audio {
   constructor() {
     this.ctx = null;
@@ -101,6 +120,131 @@ export class Audio {
     this.noiseBuf = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    this.musicBus = this.ctx.createGain();
+    this.musicBus.gain.value = 0.2;
+    this.musicBus.connect(this.master);
+    if (this.pendingAmb) this.ambience(this.pendingAmb);                  // the area we were already in
+    if (this.pendingSong) this.song(this.pendingSong);
+  }
+
+  // ---------------------------------------------------------------- music
+  // song(name): crossfade to another area's song; intensity('explore' | 'combat')
+  song(name) {
+    this.pendingSong = name;
+    if (!this.ctx || !SONGS[name]) return;
+    if (this.cur && this.cur.name === name) return;
+    this.cur = { name, ...SONGS[name], bar: 0, step: 0, next: this.ctx.currentTime + 0.1, note: 0 };
+    if (!this.musicTimer) this.musicTimer = setInterval(() => this.tickMusic(), 80);
+  }
+
+  intensity(k) { this.heat = k; }
+
+  tickMusic() {
+    const S = this.cur;
+    if (!S || !this.ctx) return;
+    const eighth = 60 / S.bpm / 2;
+    while (S.next < this.ctx.currentTime + 0.3) {
+      this.musicStep(S, S.next, eighth);
+      S.next += eighth;
+      S.step = (S.step + 1) % 8;
+      if (S.step === 0) S.bar++;
+    }
+  }
+
+  // one voice at an absolute time: shaped oscillator(s) through a lowpass
+  mvoice(type, f, t, dur, vol, o = {}) {
+    const c = this.ctx;
+    const g = c.createGain(), flt = c.createBiquadFilter();
+    flt.type = 'lowpass'; flt.frequency.value = o.cut || 2400; flt.Q.value = o.q || 0.7;
+    const att = o.att ?? 0.01, rel = o.rel ?? dur * 0.6;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + att);
+    g.gain.setValueAtTime(vol, t + Math.max(att, dur - rel));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.05);
+    flt.connect(g); g.connect(this.musicBus);
+    const oscs = [];
+    const add = (tp, fr, dt = 0, lvl = 1) => {
+      const osc = c.createOscillator(), og = c.createGain();
+      osc.type = tp; osc.frequency.setValueAtTime(fr, t); osc.detune.value = dt;
+      og.gain.value = lvl;
+      osc.connect(og); og.connect(flt);
+      oscs.push(osc);
+      return osc;
+    };
+    if (type === 'organ') { add('sine', f, 0, 0.7); add('sine', f * 2, 0, 0.35); add('sine', f * 3, 0, 0.18); add('triangle', f / 2, 0, 0.3); }
+    else if (type === 'choir') { add('sawtooth', f, -8, 0.4); add('sawtooth', f, 9, 0.4); }
+    else if (type === 'bell') { add('sine', f, 0, 0.8); add('sine', f * 2.76, 0, 0.25); add('sine', f * 5.4, 0, 0.08); }
+    else if (type === 'flute') { add('sine', f, 0, 0.9); add('triangle', f * 2, 0, 0.12); }
+    else if (type === 'harp' || type === 'pluck') { add('triangle', f, 0, 0.9); add('sine', f * 2, 0, 0.3); }
+    else { add(type, f, -5, 0.6); add(type, f, 6, 0.6); }
+    if (o.vib) {                                                   // gentle vibrato
+      const lfo = c.createOscillator(), lg = c.createGain();
+      lfo.frequency.value = 5.2; lg.gain.value = f * 0.008;
+      lfo.connect(lg);
+      for (const osc of oscs) lg.connect(osc.frequency);
+      lfo.start(t); lfo.stop(t + dur + 0.1);
+    }
+    for (const osc of oscs) { osc.start(t); osc.stop(t + dur + 0.1); }
+  }
+
+  mnoise(t, dur, vol, freq, q = 1, type = 'bandpass') {
+    const c = this.ctx;
+    const src = c.createBufferSource(); src.buffer = this.noiseBuf;
+    const flt = c.createBiquadFilter(); flt.type = type; flt.frequency.value = freq; flt.Q.value = q;
+    const g = c.createGain();
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(flt); flt.connect(g); g.connect(this.musicBus);
+    src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.02);
+  }
+
+  mkick(t, vol = 0.5, f0 = 120) {
+    const c = this.ctx, o = c.createOscillator(), g = c.createGain();
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.18);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    o.connect(g); g.connect(this.musicBus); o.start(t); o.stop(t + 0.3);
+  }
+
+  musicStep(S, t, e) {
+    const fight = this.heat === 'combat';
+    const deg = S.prog[S.bar % S.prog.length];
+    const sc = S.scale, n = sc.length;
+    const tone = (d, oct = 0) => S.root + sc[((d % n) + n) % n] + 12 * (Math.floor(d / n) + oct);
+    const bar = e * 8;
+    if (S.step === 0) {                                          // pad: the bar's chord
+      for (const k of [0, 2, 4]) this.mvoice(S.pad, midi(tone(deg + k)), t, bar * 0.98, 0.05, { cut: S.cut, att: bar * 0.3, rel: bar * 0.4 });
+    }
+    // bass on the strong beats (busier in a fight)
+    if (S.step === 0 || S.step === 4 || (fight && (S.step === 6 || S.step === 3)))
+      this.mvoice(S.bass, midi(tone(deg, -1)), t, e * (fight ? 1.4 : 3.2), fight ? 0.16 : 0.12, { cut: 700, att: 0.01 });
+    // the wandering lead
+    const strong = S.step % 2 === 0;
+    if (Math.random() < S.density * (strong ? 1.25 : 0.6) * (fight ? 1.2 : 1)) {
+      const chordTones = [deg, deg + 2, deg + 4];
+      S.note = Math.random() < 0.45 ? chordTones[(Math.random() * 3) | 0] : S.note + ((Math.random() * 5) | 0) - 2;
+      S.note = Math.max(deg - 3, Math.min(deg + 9, S.note));
+      const len = e * (Math.random() < 0.3 ? 3 : Math.random() < 0.5 ? 2 : 1);
+      const L = S.lead;
+      const vol = L === 'square' ? 0.035 : L === 'bell' ? 0.07 : L === 'choir' ? 0.035 : 0.06;
+      this.mvoice(L, midi(tone(S.note, S.oct)), t, L === 'bell' ? len + e * 2 : len,
+        vol, { cut: L === 'square' ? 1500 : 3000, att: L === 'choir' || L === 'flute' ? 0.08 : 0.005, vib: L === 'flute' || L === 'choir', rel: len * 0.7 });
+    }
+    // percussion: the area's own texture, plus a beat when fighting
+    if (fight) {
+      if (S.step === 0 || S.step === 4) this.mkick(t, 0.45);
+      if (S.step === 2 || S.step === 6) this.mnoise(t, 0.16, 0.14, 1800, 0.8);
+      if (S.step % 2 === 1) this.mnoise(t, 0.04, 0.05, 7000, 1.5, 'highpass');
+    }
+    const r = Math.random();
+    switch (S.perc) {
+      case 'drip': if (r < 0.08) this.mvoice('sine', midi(84 + ((Math.random() * 6) | 0)), t, 0.12, 0.03, { att: 0.002 }); break;
+      case 'clink': if (S.step === 0 && r < 0.5 || r < 0.06) this.mvoice('bell', midi(90 + ((Math.random() * 4) | 0)), t, 0.2, 0.025, { att: 0.001 }); break;
+      case 'bell': if (S.step === 0 && S.bar % 2 === 0) this.mvoice('bell', midi(S.root + 12), t, 2.5, 0.05, { att: 0.002 }); break;
+      case 'chime': if (r < 0.1) this.mvoice('bell', midi(tone(deg + ((Math.random() * 5) | 0), 3)), t, 1.2, 0.025, { att: 0.002 }); break;
+      case 'tom': if (S.step === 0 || (S.step === 5 && r < 0.5)) this.mkick(t, 0.3, 90); break;
+      case 'wind': if (S.step === 0 && S.bar % 4 === 0) this.mnoise(t, bar * 2, 0.03, 500, 0.6); break;
+      case 'tick': if (S.step % 2 === 0) this.mnoise(t, 0.03, 0.04, 5000, 3); break;
+      case 'shaker': if (S.step % 2 === 1) this.mnoise(t, 0.06, 0.05, 6000, 1.2, 'highpass'); if (S.step === 0) this.mkick(t, 0.25); break;
+    }
   }
 
   toggleMute() {
@@ -172,6 +316,8 @@ export class Audio {
   }
 
   ambience(biome) {
+    this.pendingAmb = biome;
+    this.song(biome);
     if (!this.ctx) return;
     if (this.amb) { this.amb.forEach(n => { try { n.stop(); } catch (e) { /* already stopped */ } }); this.amb = null; }
     const t = this.ctx.currentTime;

@@ -4,9 +4,9 @@
 // Reels are cylinders with 8 symbol slots around them; their texture is a
 // canvas strip redrawn whenever the slots change. Rotation theta = k * PI/4
 // shows slot k in the top row and slot k-1 in the bottom row.
-import { gl, updateTex } from './gl.js?v=20260925231244';
-import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925231244';
-import { SYMBOLS } from './data.js?v=20260925231244';
+import { gl, updateTex } from './gl.js?v=20260925232412';
+import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925232412';
+import { SYMBOLS } from './data.js?v=20260925232412';
 
 const SLOTS = 8, CELLPX = 96;
 const STEP = Math.PI * 2 / SLOTS;
@@ -17,6 +17,7 @@ export class SlotMachine {
     this.r = renderer;
     this.assets = assets;
     this.model = assets.models.slot_machine;
+    this.theme = 'classic';                                       // 'arcane': the Mage's machine
     // reels 0-2 live in the machine; 3 and 4 are the Rogue's summoned forest pods (top left / top right)
     this.reels = [0, 1, 2, 3, 4].map(i => ({
       slots: new Array(SLOTS).fill('sword'), k: 0, theta: 0, from: 0, to: 0, t0: 0, dur: 0, spinning: false,
@@ -37,6 +38,15 @@ export class SlotMachine {
     this.time = 0;
     this.drawnState = '';
     this.parchment = assets.textures.parchment;
+  }
+
+  // each class plays its own machine: the stone one, or the Mage's arcane altar
+  setTheme(theme) {
+    const m = theme === 'arcane' ? this.assets.models.slot_machine_arcane : null;
+    this.theme = m ? 'arcane' : 'classic';
+    this.model = m || this.assets.models.slot_machine;
+    this.reels.forEach(r => { r.dirty = true; });
+    this.drawnState = '';
   }
 
   panel(name, w, h) {
@@ -202,7 +212,7 @@ export class SlotMachine {
       const y = (SLOTS - 1 - k) * CELLPX;                        // slot k -> canvas row (7 - k)
       if (this.parchment) c.drawImage(this.parchment, 0, (k * 17) % 32, 64, 64, 0, y, CELLPX, CELLPX);
       else { c.fillStyle = '#e0cfa8'; c.fillRect(0, y, CELLPX, CELLPX); }
-      c.fillStyle = 'rgba(255,245,220,0.35)';
+      c.fillStyle = this.theme === 'arcane' ? 'rgba(236,222,255,0.4)' : 'rgba(255,245,220,0.35)';
       c.fillRect(0, y, CELLPX, CELLPX);
       if (Array.isArray(r.highlight) ? r.highlight.includes(k) : k === r.highlight) {
         c.fillStyle = 'rgba(255,214,90,0.55)';
@@ -210,7 +220,7 @@ export class SlotMachine {
         c.strokeStyle = '#d8a030'; c.lineWidth = 6;
         c.strokeRect(3, y + 3, CELLPX - 6, CELLPX - 6);
       }
-      c.fillStyle = 'rgba(60,40,20,0.55)';
+      c.fillStyle = this.theme === 'arcane' ? 'rgba(70,30,110,0.6)' : 'rgba(60,40,20,0.55)';
       c.fillRect(0, y, CELLPX, 2);
       c.fillRect(0, y + CELLPX - 2, CELLPX, 2);
       const sym = SYMBOLS[r.slots[k]];
@@ -241,14 +251,14 @@ export class SlotMachine {
     // SPIN button face
     {
       const c = this.spinFace.canvas.getContext('2d');
-      const on = s.spinEnabled;
-      c.fillStyle = on ? (s.spinHover ? '#c8303a' : '#b02630') : '#5a2a2c';
+      const on = s.spinEnabled, arc = this.theme === 'arcane';
+      c.fillStyle = arc ? (on ? (s.spinHover ? '#9a4ad8' : '#7a36b8') : '#3a2450') : on ? (s.spinHover ? '#c8303a' : '#b02630') : '#5a2a2c';
       c.fillRect(0, 0, 192, 108);
-      c.fillStyle = on ? 'rgba(255,190,190,0.18)' : 'rgba(0,0,0,0.1)';
+      c.fillStyle = on ? (arc ? 'rgba(220,190,255,0.2)' : 'rgba(255,190,190,0.18)') : 'rgba(0,0,0,0.1)';
       c.fillRect(0, 0, 192, 20);
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.font = `bold ${s.spinLabel.length > 5 ? 36 : 52}px ${FONT}`;
-      c.lineWidth = 7; c.strokeStyle = '#3a0c10';
+      c.lineWidth = 7; c.strokeStyle = arc ? '#1c0a30' : '#3a0c10';
       c.strokeText(s.spinLabel, 96, 58);
       c.fillStyle = on ? '#f6ece0' : '#a08880';
       c.fillText(s.spinLabel, 96, 58);
@@ -277,7 +287,8 @@ export class SlotMachine {
       dir: { dir: [0.35, -0.55, -0.75], col: [0.62, 0.58, 0.5] }, fog: false, bands: 12, time,
       lights: [{ pos: [0, 3.5 * this.base.s + this.base.y, 3], col: [0.35, 0.28, 0.18], radius: 12 }],
     });
-    const pose = { spin_button: { tz: -0.05 * this.press } };
+    const pose = { spin_button: { tz: -0.05 * this.press },
+                   orb: { ry: time * 1.1, ty: Math.sin(time * 2) * 0.02 } };      // the arcane machine's caged orb turns
     this.reels.forEach((r, i) => { pose['reel' + i] = { rx: r.theta - Math.sin(r.bounce * Math.PI) * 0.05 }; });
     R.drawModel(this.model, this.matrix(), { pose });
     if (this.podT > 0.002 && this.podModel) {
