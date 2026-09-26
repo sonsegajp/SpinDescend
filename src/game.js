@@ -1,19 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926001701';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926001701';
+import { gl } from './gl.js?v=20260926032940';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926032940';
 const BOSS_SCALE = 2.1;
-import { Renderer, invert } from './render.js?v=20260926001701';
-import { SlotMachine } from './slot.js?v=20260926001701';
-import { CardView } from './cards.js?v=20260926001701';
-import { UI, SERIF } from './ui.js?v=20260926001701';
-import { Animator } from './anim.js?v=20260926001701';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926001701';
-import { is } from './input.js?v=20260926001701';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260926001701';
+import { Renderer, invert } from './render.js?v=20260926032940';
+import { SlotMachine } from './slot.js?v=20260926032940';
+import { CardView } from './cards.js?v=20260926032940';
+import { UI, SERIF } from './ui.js?v=20260926032940';
+import { Animator } from './anim.js?v=20260926032940';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926032940';
+import { is } from './input.js?v=20260926032940';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260926032940';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
          BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926001701';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926032940';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -314,7 +314,7 @@ export class Game {
       const hp = Math.round(def.hp * mult * (e.elite ? 1.7 : 1));
       const ent = { ...e, def, hp, maxHp: hp, atk: def.atk + Math.floor((this.floor - 1) / 5) + (e.elite ? 1 : 0),
                poison: 0, burn: 0, stunTurns: 0, alive: true, flash: 0, advance: 0, turn: 0, fadeOut: 0, shell: 0,
-               phase: Math.random() * 6, scale: ENEMY_SCALE * (e.boss ? BOSS_SCALE : e.elite ? 1.3 : 1) };
+               phase: Math.random() * 6, scale: ENEMY_SCALE * (e.boss ? BOSS_SCALE * (def.size || 1) : e.elite ? 1.3 : 1) };
       ent.animator = this.makeAnimator(def.model);
       return ent;
     }
@@ -1872,6 +1872,10 @@ export class Game {
 
   enemyWorld(e) {
     let x = e.x * CELL, z = e.y * CELL;
+    if (e.boss) {                                                   // the boss holds the far end of its hall
+      const dx = x - this.px * CELL, dz = z - this.py * CELL, l = Math.hypot(dx, dz) || 1;
+      x += dx / l * 1.4; z += dz / l * 1.4;
+    }
     if (e.engaged && !e.boss) {
       // engaged enemies step up toward the player
       const dx = this.px * CELL - x, dz = this.py * CELL - z, l = Math.hypot(dx, dz) || 1;
@@ -1899,7 +1903,7 @@ export class Game {
     const yawV = this.cam.yaw + (this.shopLook || 0) * SHOP_YAW;
     const fx = Math.sin(yawV), fz = Math.cos(yawV);
     let ex = this.cam.x - fx * BACK, ez = this.cam.z - fz * BACK, ey = EYE + this.cam.bob;
-    let pitch = PITCH;
+    let pitch = this.combat && this.combat.e.boss ? -0.04 : PITCH;      // look up at a boss
     if (this.state === 'title') {
       ex = this.cam.x - fx * 0.5; ez = this.cam.z - fz * 0.5; ey = 0.86; pitch = -0.07;
     }
@@ -1967,11 +1971,12 @@ export class Game {
     const yaw = Math.atan2(this.cam.x - x, this.cam.z - z);
     const m = trs(x, y, z, yaw, 0, 0, e.scale);
     const flash = e.flash ? [1, 1, 1, e.flash * 0.7] : [0, 0, 0, 0];
-    const tint = e.elite ? [1.15, 0.92, 0.85] : [1, 1, 1];
+    const tint = e.def.tint || (e.elite ? [1.15, 0.92, 0.85] : [1, 1, 1]);            // a recoloured boss dims to its biome's light
     // the body lies there a moment after the death clip, then fades away
     const alpha = e.alive ? 1 : 1 - clamp((now - e.deathT - 1.45) / 0.45, 0, 1);
     const mats = e.animator ? e.animator.matrices() : null;
-    this.R.drawModel(model, m, { mats, pose: mats ? null : undefined, flash, alpha, tint });
+    const texOverride = e.def.tex ? { ['bake_' + e.def.model]: this.R.tex(e.def.tex) } : null;   // a boss's biome recolour
+    this.R.drawModel(model, m, { mats, pose: mats ? null : undefined, flash, alpha, tint, texOverride });
   }
 
   drawChest(c, now) {
@@ -2164,22 +2169,22 @@ export class Game {
 
   drawBossBar(now) {
     const U = this.ui, W = this.W, g = U.g, C = this.combat, e = C.e;
-    const bw = Math.min(360, W - 120), x = W / 2 - bw / 2, y = 44;
-    U.text(e.def.name.toUpperCase(), W / 2, y - 8, { size: 15, align: 'center', color: e.enraged ? '#ff5a3a' : '#ffd8b8', spacing: 2 });
-    g.fillStyle = '#0c0810'; g.fillRect(x - 3, y - 3, bw + 6, 16);
-    g.fillStyle = '#3a0c10'; g.fillRect(x, y, bw, 10);
+    const bw = Math.min(300, W - 140), x = W / 2 - bw / 2, y = 30;
+    U.text(e.def.name.toUpperCase(), W / 2, y - 6, { size: 12, align: 'center', color: e.enraged ? '#ff5a3a' : '#ffd8b8', spacing: 2 });
+    g.fillStyle = '#0c0810'; g.fillRect(x - 2, y - 2, bw + 4, 11);
+    g.fillStyle = '#3a0c10'; g.fillRect(x, y, bw, 7);
     const f = clamp(e.hp / e.maxHp, 0, 1);
-    g.fillStyle = e.enraged ? `rgba(255,${60 + 40 * Math.sin(now * 12)},40,1)` : '#c8202a'; g.fillRect(x, y, bw * f, 10);
-    g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(x, y, bw * f, 3);
+    g.fillStyle = e.enraged ? `rgba(255,${60 + 40 * Math.sin(now * 12)},40,1)` : '#c8202a'; g.fillRect(x, y, bw * f, 7);
+    g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(x, y, bw * f, 2);
     if (e.shell > 0) { g.fillStyle = 'rgba(160,190,255,0.85)'; g.fillRect(x, y + 7, Math.min(bw, bw * e.shell / e.maxHp * 2), 3); }
-    U.text(`${Math.max(0, e.hp)} / ${e.maxHp}${e.shell ? `   shell ${e.shell}` : ''}`, W / 2, y + 22, { size: 9, align: 'center', color: '#e8d8d0' });
+    U.text(`${Math.max(0, e.hp)} / ${e.maxHp}${e.shell ? `   shell ${e.shell}` : ''}`, W / 2, y + 17, { size: 8, align: 'center', color: '#e8d8d0' });
     U.icon(this.a.icons48.sword, x + bw + 6, y - 5, 16);
     U.text(`${e.atk}`, x + bw + 24, y + 8, { size: 11, color: '#ffb0a0' });
     if (e.poison) { U.icon(this.a.icons48.dagger, x - 38, y - 5, 16); U.text(`${e.poison}`, x - 6, y + 8, { size: 10, align: 'right', color: '#8aff6a' }); }
     if (e.burn) { U.icon(this.a.icons48.fire, x - 60, y - 5, 16); U.text(`${e.burn}`, x - 42, y + 8, { size: 10, color: '#ff8a3a' }); }
-    if (C.warn && C.phase === 'ready') U.text(`Next: ${ABILITY[C.warn].name}`, W / 2, y + 34, { size: 10, align: 'center', color: ABILITY[C.warn].col });
+    if (C.warn && C.phase === 'ready') U.text(`Next: ${ABILITY[C.warn].name}`, W / 2, y + 28, { size: 10, align: 'center', color: ABILITY[C.warn].col });
     const P = this.player;
-    if (P.burnT || P.spores) U.text(`${P.burnT ? `Burning ${P.burnT}  ` : ''}${P.spores ? `Spores ${P.spores}` : ''}`, W / 2, y + 46, { size: 9, align: 'center', color: '#ffb080' });
+    if (P.burnT || P.spores) U.text(`${P.burnT ? `Burning ${P.burnT}  ` : ''}${P.spores ? `Spores ${P.spores}` : ''}`, W / 2, y + 39, { size: 9, align: 'center', color: '#ffb080' });
   }
 
   drawPrompt(now, ptr) {

@@ -1,7 +1,7 @@
 // assets.js - loads every model, texture, card, icon and UI image the game uses.
-import { parseSDM, Model } from './gl.js?v=20260926001701';
-import { parseSDA } from './anim.js?v=20260926001701';
-import { CARDS, SYMBOLS, CARD_ICON, OMENS } from './data.js?v=20260926001701';
+import { parseSDM, Model } from './gl.js?v=20260926032940';
+import { parseSDA } from './anim.js?v=20260926032940';
+import { CARDS, SYMBOLS, CARD_ICON, OMENS, BOSSES } from './data.js?v=20260926032940';
 
 export const BASE = (window.SD_ASSETS || '../assets/');
 // local dev: never trust the HTTP cache (assets are re-exported from Blender constantly)
@@ -9,10 +9,12 @@ const DEV = ['localhost', '127.0.0.1'].includes(location.hostname);
 const V = DEV ? '?v=' + Date.now() : (window.SD_BUILD ? '?v=' + window.SD_BUILD : '');
 
 export const ANIMATED = ['knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mimic',
-  'wailer', 'tusker', 'duskwing', 'warden', 'wickling', 'murk', 'jester', 'merchant', 'rogue', 'mage'];
+  'wailer', 'tusker', 'duskwing', 'warden', 'wickling', 'murk', 'jester', 'merchant', 'rogue', 'mage',
+  'slime_monarch', 'boar_demon', 'mimic_colossus', 'gravemaw'];
 
 export const MODELS = [
   'knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mimic', 'wailer', 'tusker', 'duskwing', 'warden', 'wickling', 'murk', 'jester', 'merchant', 'rogue', 'mage',
+  'slime_monarch', 'boar_demon', 'mimic_colossus', 'gravemaw',
   'slot_machine', 'slot_machine_arcane', 'slot_machine_knight', 'slot_machine_forest', 'card', 'reel_pod',
   'dun_wall0', 'dun_wall1', 'dun_wall2', 'dun_wall3', 'dun_floor0', 'dun_floor1', 'dun_floor2', 'dun_ceil', 'dun_pillar',
   'torch', 'banner', 'banner_blue', 'stairs', 'barrel', 'cobweb', 'chains', 'bones',
@@ -53,7 +55,7 @@ export async function loadAll(onProgress) {
     const r = await fetch(BASE + 'models/' + m + '.sda' + V, { cache: DEV ? 'no-store' : 'default' });
     if (r.ok) assets.anims[m] = parseSDA(await r.arrayBuffer());
   }));
-  const texNames = new Set(['parchment', 'card_back', 'st_ui', 'bake_knight_paladin']);
+  const texNames = new Set(['parchment', 'card_back', 'st_ui', 'bake_knight_paladin', ...Object.values(BOSSES).map(b => b.tex).filter(Boolean)]);
   for (const m of MODELS) for (const s of raws[m].sections) if (s.tex && s.tex[0] !== '@') texNames.add(s.tex);
   const iconNames = new Set(['heart', 'coins', 'boots', 'fire', 'clover4', ...Object.values(CARD_ICON),
                              ...Object.values(OMENS).map(o => o.icon)]);
