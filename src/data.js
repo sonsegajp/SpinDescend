@@ -56,6 +56,23 @@ export const SYMBOLS = {
   powder_saber: { name: 'Powder Saber',     icon: 'powder_saber', rarity: 'rare',      dmg: 3, trigger: 0.35,  desc: 'Deal 3 damage. 35% chance its pistol barrel fires: +3.' },
   bulwark:      { name: 'Bulwark',          icon: 'bulwark',      rarity: 'rare',      armor: 3,               desc: 'Gain 3 Armor.' },
   ember_flask:  { name: 'Ember Flask',      icon: 'ember_flask',  rarity: 'rare',      heal: 5,                desc: 'Restore 5 HP.' },
+  // the Mage's spells: they replace every melee weapon on a Mage run, and only a Mage ever finds them.
+  // spell: counts as magic (Spellweaver echoes); sure: never misses; chill: the foe hits 1 softer for N turns;
+  // freeze: chance the foe loses its attack; leech: heal N; arc: +1 per other spell on the reels
+  spark:        { name: 'Arcane Spark',     icon: 'spark',        rarity: 'common',    dmg: 1, spell: 1, sure: 1, desc: 'Deal 1 damage. Spells never miss.' },
+  bolt_arcane:  { name: 'Arcane Bolt',      icon: 'bolt_arcane',  rarity: 'uncommon',  dmg: 2, spell: 1, sure: 1, desc: 'Deal 2 damage.' },
+  firebolt:     { name: 'Fire Bolt',        icon: 'firebolt',     rarity: 'uncommon',  dmg: 1, burn: 2, spell: 1, sure: 1, desc: 'Deal 1 damage and set the foe ablaze for 2 turns.' },
+  frost:        { name: 'Frost Shard',      icon: 'frost',        rarity: 'uncommon',  dmg: 1, chill: 2, spell: 1, sure: 1, desc: 'Deal 1 damage. Chill: the foe hits 1 softer for 2 turns.' },
+  toxic:        { name: 'Toxic Cloud',      icon: 'toxic',        rarity: 'uncommon',  dmg: 1, poison: 2, spell: 1, sure: 1, desc: 'Deal 1 damage and apply 2 Poison.' },
+  chain:        { name: 'Chain Lightning',  icon: 'chain',        rarity: 'rare',      dmg: 2, arc: 1, spell: 1, sure: 1, desc: 'Deal 2 damage, +1 for every other Spell on the reels.' },
+  fireball:     { name: 'Fireball',         icon: 'fireball',     rarity: 'rare',      dmg: 4, burn: 2, spell: 1, sure: 1, desc: 'Deal 4 damage and set the foe ablaze.' },
+  missiles:     { name: 'Arcane Missiles',  icon: 'missiles',     rarity: 'rare',      dmg: 1, hits: 3, spell: 1, sure: 1, desc: 'Deal 1 damage three times.' },
+  drain:        { name: 'Life Drain',       icon: 'drain',        rarity: 'rare',      dmg: 2, leech: 2, spell: 1, sure: 1, desc: 'Deal 2 damage and heal 2 HP.' },
+  icelance:     { name: 'Ice Lance',        icon: 'icelance',     rarity: 'rare',      dmg: 3, chill: 2, freeze: 0.3, spell: 1, sure: 1, desc: 'Deal 3 damage and Chill. 30% chance to Freeze: the foe loses its attack.' },
+  meteor:       { name: 'Meteor',           icon: 'meteor',       rarity: 'epic',      dmg: 7, pierce: 1, spell: 1, sure: 1, desc: 'Deal 7 damage that smashes through block.' },
+  void:         { name: 'Void Rift',        icon: 'void',         rarity: 'epic',      dmg: 2, execute: 0.3, spell: 1, sure: 1, desc: 'Deal 2 damage. Swallows any foe left below 30% HP.' },
+  starfall:     { name: 'Starfall',         icon: 'starfall',     rarity: 'legendary', dmg: 2, hits: 5, spell: 1, sure: 1, desc: 'Five falling stars deal 2 damage each.' },
+  prism:        { name: 'Prismatic Ray',    icon: 'prism',        rarity: 'legendary', dmg: 4, beam: 4, spell: 1, sure: 1, desc: 'Deal 4 damage. At full HP the ray splits: +4.' },
 };
 
 // Paytable families: upgraded symbols count as their base symbol.
@@ -70,15 +87,18 @@ export const FAMILY = {
   clover: 'clover', charm: 'clover',
   skull: 'skull', skull_cursed: 'skull',
   bomb: 'bomb', dice: 'dice',
+  spark: 'spell', bolt_arcane: 'spell', firebolt: 'spell', frost: 'spell', toxic: 'spell', chain: 'spell', fireball: 'spell',
+  missiles: 'spell', drain: 'spell', icelance: 'spell', meteor: 'spell', void: 'spell', starfall: 'spell', prism: 'spell',
 };
 export const FAMILY_NAME = { blade: 'Weapons', shield: 'Shields', potion: 'Potions', coin: 'Coins', chest: 'Treasure',
-  clover: 'Clovers', skull: 'Curses', bomb: 'Bombs', dice: 'Dice', wild: 'Wildcards' };
+  clover: 'Clovers', skull: 'Curses', bomb: 'Bombs', dice: 'Dice', wild: 'Wildcards', spell: 'Spells' };
 export const FAMILY_ICON = { blade: 'sword', shield: 'shield', potion: 'potion', coin: 'coin', chest: 'chest',
-  clover: 'clover', skull: 'skull', bomb: 'bomb', dice: 'dice', wild: 'wild' };
+  clover: 'clover', skull: 'skull', bomb: 'bomb', dice: 'dice', wild: 'wild', spell: 'spark' };
 
 // 3 of a family across a row (either payline; Wildcards fill in): a permanent boost for the run.
 export const LINE_BONUS = {
   blade:  { name: 'TRIPLE STRIKE',  color: '#ff7a5a', desc: '+1 Might: every hit deals +1 for the rest of the run', short: '+1 Might: every hit +1' },
+  spell:  { name: 'ARCANE SURGE',   color: '#c07aff', desc: '+1 Might: every spell deals +1 for the rest of the run', short: '+1 Might: every spell +1' },
   shield: { name: 'FORTRESS',       color: '#8ab0ff', desc: '+1 Guard: start every spin with +1 Armor', short: '+1 Guard: +1 Armor each spin' },
   potion: { name: 'VITALITY',       color: '#6aff8a', desc: '+3 Max HP and heal 5', short: '+3 Max HP, heal 5' },
   coin:   { name: 'JACKPOT',        color: '#ffd24a', desc: 'Gold burst and +1 Fortune: every coin pays +1', short: 'Gold burst, +1 Fortune' },
@@ -107,6 +127,15 @@ export const SPECIAL_LINE = {
   scythe:       { name: 'HARVEST',      color: '#b07aff', desc: 'Reap the foe if it is below 50% HP, else 6 damage', short: 'Reap below 50% HP, else 6', hit: 1 },
   spiked:       { name: 'IRON MAIDEN',  color: '#9ab0d0', desc: '+1 Guard and 5 damage', short: '+1 Guard, 5 damage', hit: 1 },
   potion3:      { name: 'PANACEA',      color: '#ff7a9a', desc: 'Heal to full HP', short: 'Full heal' },
+  firebolt:     { name: 'FIRESTORM',    color: '#ff7a2a', desc: 'The foe burns for 6 turns', short: 'Ablaze for 6 turns' },
+  frost:        { name: 'DEEP FREEZE',  color: '#8ad8ff', desc: 'The foe is frozen solid for 2 turns', short: 'Freeze for 2 turns' },
+  toxic:        { name: 'PLAGUE',       color: '#8aff6a', desc: '8 Poison', short: '8 Poison' },
+  chain:        { name: 'THUNDERSTORM', color: '#ffe84a', desc: '4 lightning strikes of 3 damage', short: '4 strikes of 3', hit: 1 },
+  fireball:     { name: 'INFERNO',      color: '#ff5a1a', desc: '14 damage and the foe burns for 4 turns', short: '14 damage + burn', hit: 1 },
+  missiles:     { name: 'ARCANE BARRAGE', color: '#c8a0ff', desc: '8 more missiles: 1 damage each (+Might)', short: '8 extra hits of 1', hit: 1 },
+  drain:        { name: 'SOUL FEAST',   color: '#ff5a7a', desc: 'Drain 8: deal 8 and heal 8', short: 'Deal 8, heal 8', hit: 1 },
+  icelance:     { name: 'GLACIER',      color: '#a8e8ff', desc: '12 damage and the foe is frozen for a turn', short: '12 damage + freeze', hit: 1 },
+  void:         { name: 'OBLIVION',     color: '#b07aff', desc: 'Erase the foe if it is below 50% HP, else 10 damage', short: 'Erase below 50%, else 10', hit: 1 },
 };
 
 // 3+ of a family anywhere on the reels in one spin: a bonus roll (Luck adds to the odds).
@@ -114,6 +143,7 @@ export const SCATTER_BONUS = {
   chest:  { name: 'BONUS CARD',  chance: 1,    color: '#ffb84a', desc: 'An extra card after this fight' },
   clover: { name: 'LUCKY SPIN',  chance: 1,    color: '#7aff8a', desc: 'A free spin' },
   blade:  { name: 'FRENZY',      chance: 0.35, color: '#ff7a5a', desc: 'Every hit this spin is a critical' },
+  spell:  { name: 'SPELLSTORM',  chance: 0.35, color: '#c89aff', desc: 'Every spell this spin is a critical' },
   coin:   { name: 'DOUBLE GOLD', chance: 0.5,  color: '#ffd24a', desc: 'Coins pay double this spin' },
   shield: { name: 'SHIELD WALL', chance: 0.5,  color: '#8ab0ff', desc: '+3 Armor' },
   potion: { name: 'SECOND WIND', chance: 0.5,  color: '#6aff8a', desc: 'Heal 3' },
@@ -186,7 +216,22 @@ export const CARDS = {
   heartfruit:       { name: 'Heartfruit',       rarity: 'uncommon',  type: 'boost',   stat: 'heartfruit',
                       desc: '+4 Max HP and heal fully.' },
   ember_core:       { name: 'Ember Core',       rarity: 'rare',      type: 'passive', relic: 'ember_core',
-                      desc: 'Bombs and Flame Brands deal +2 damage.' },
+                      desc: 'Bombs, Flame Brands and fire spells deal +2 damage.' },
+  // spells (cls: only ever offered on a Mage run)
+  arcane_spark:     { name: 'Arcane Spark',     rarity: 'common',    type: 'add',     sym: 'spark', cls: 'mage' },
+  arcane_bolt:      { name: 'Arcane Bolt',      rarity: 'uncommon',  type: 'upgrade', from: ['spark'],            to: 'bolt_arcane', cls: 'mage' },
+  fire_bolt:        { name: 'Fire Bolt',        rarity: 'uncommon',  type: 'add',     sym: 'firebolt', cls: 'mage' },
+  frost_shard:      { name: 'Frost Shard',      rarity: 'uncommon',  type: 'add',     sym: 'frost', cls: 'mage' },
+  toxic_cloud:      { name: 'Toxic Cloud',      rarity: 'uncommon',  type: 'add',     sym: 'toxic', cls: 'mage' },
+  chain_lightning:  { name: 'Chain Lightning',  rarity: 'rare',      type: 'add',     sym: 'chain', cls: 'mage' },
+  fireball:         { name: 'Fireball',         rarity: 'rare',      type: 'upgrade', from: ['firebolt'],         to: 'fireball', cls: 'mage' },
+  arcane_missiles:  { name: 'Arcane Missiles',  rarity: 'rare',      type: 'add',     sym: 'missiles', cls: 'mage' },
+  life_drain:       { name: 'Life Drain',       rarity: 'rare',      type: 'add',     sym: 'drain', cls: 'mage' },
+  ice_lance:        { name: 'Ice Lance',        rarity: 'rare',      type: 'upgrade', from: ['frost'],            to: 'icelance', cls: 'mage' },
+  meteor:           { name: 'Meteor',           rarity: 'epic',      type: 'upgrade', from: ['fireball'],         to: 'meteor', cls: 'mage' },
+  void_rift:        { name: 'Void Rift',        rarity: 'epic',      type: 'add',     sym: 'void', cls: 'mage' },
+  starfall:         { name: 'Starfall',         rarity: 'legendary', type: 'upgrade', from: ['bolt_arcane'],      to: 'starfall', cls: 'mage' },
+  prismatic_ray:    { name: 'Prismatic Ray',    rarity: 'legendary', type: 'add',     sym: 'prism', cls: 'mage' },
 };
 
 // card-face icon for cards that don't put a symbol on the reels
@@ -200,6 +245,23 @@ export const CARD_PRICE = { common: 8, uncommon: 14, rare: 22, epic: 34, legenda
 // The Knight's starting reel bag ("Balanced").
 export const KNIGHT_BAG = ['sword', 'sword', 'sword', 'sword', 'shield', 'shield', 'shield', 'potion', 'potion',
   'coin', 'coin', 'coin', 'chest', 'skull', 'skull', 'clover'];
+// The Rogue: knives and daggers, deep pockets, a lucky streak.
+export const ROGUE_BAG = ['dagger', 'dagger', 'knives', 'sword', 'sword', 'shield', 'shield', 'potion', 'potion',
+  'coin', 'coin', 'coins', 'coin', 'chest', 'skull', 'clover', 'clover'];
+// The Mage: sparks instead of swords, a fire bolt, fewer shields.
+export const MAGE_BAG = ['spark', 'spark', 'spark', 'spark', 'firebolt', 'shield', 'shield', 'potion', 'potion',
+  'coin', 'coin', 'coin', 'chest', 'skull', 'skull', 'clover'];
+
+// Playable classes (title screen). unlock: the deepest floor a run must reach first.
+export const CLASSES = {
+  knight: { name: 'THE KNIGHT', sub: 'Balanced', model: 'knight', hp: 25, bag: KNIGHT_BAG, guard: 1,
+            passive: 'Stalwart: +1 Guard - every spin starts with 1 Armor.' },
+  rogue:  { name: 'THE ROGUE', sub: 'Cunning', model: 'rogue', hp: 20, bag: ROGUE_BAG, luck: 0.05, unlock: 3,
+            passive: 'Sleight of Hand: 25% of spins (+Luck) she shrinks the machine and summons two forest reels.' },
+  mage:   { name: 'THE MAGE', sub: 'Arcane', model: 'mage', hp: 21, bag: MAGE_BAG, unlock: 5,
+            passive: 'Spellweaver: casts spells, never steel. Every 4th spell echoes and casts twice.' },
+};
+export const CLASS_ORDER = ['knight', 'rogue', 'mage'];
 
 export const ENEMIES = {
   goblin:   { name: 'Goblin',   model: 'goblin',   hp: 7,  atk: 2, gold: [2, 4] },

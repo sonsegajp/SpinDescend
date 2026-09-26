@@ -1,17 +1,23 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260925194320';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925194320';
-import { Renderer, invert } from './render.js?v=20260925194320';
-import { SlotMachine } from './slot.js?v=20260925194320';
-import { CardView } from './cards.js?v=20260925194320';
-import { UI, SERIF } from './ui.js?v=20260925194320';
-import { Animator } from './anim.js?v=20260925194320';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260925194320';
-import { is } from './input.js?v=20260925194320';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260925194320';
-import { SYMBOLS, CARDS, RARITY, CARD_PRICE, KNIGHT_BAG, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925194320';
+import { gl } from './gl.js?v=20260925231244';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925231244';
+import { Renderer, invert } from './render.js?v=20260925231244';
+import { SlotMachine } from './slot.js?v=20260925231244';
+import { CardView } from './cards.js?v=20260925231244';
+import { UI, SERIF } from './ui.js?v=20260925231244';
+import { Animator } from './anim.js?v=20260925231244';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260925231244';
+import { is } from './input.js?v=20260925231244';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260925231244';
+import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER,
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925231244';
+
+// run progress kept in the browser: the deepest floor ever reached unlocks classes
+function loadProgress() {
+  try { return Object.assign({ best: 1 }, JSON.parse(localStorage.getItem('sd_progress') || '{}')); } catch (e) { return { best: 1 }; }
+}
+function saveProgress(p) { try { localStorage.setItem('sd_progress', JSON.stringify(p)); } catch (e) { /* storage blocked */ } }
 
 const EYE = 0.84, BACK = 0.8, PITCH = -0.19, FOV = 58 * Math.PI / 180;
 const SHOP_YAW = 0.34;                                            // shop: camera turns so the merchant stands right of the cards
@@ -32,6 +38,9 @@ export class Game {
     this.time = 0;
     this.skin = 'classic';
     this.paladinTex = null;
+    this.progress = loadProgress();
+    this.cls = 'knight';
+    try { const c = localStorage.getItem('sd_class'); if (CLASSES[c] && this.unlocked(c)) this.cls = c; } catch (e) { /* storage blocked */ }
     this.toTitle();
   }
 
@@ -56,6 +65,9 @@ export class Game {
       };
     }
     if (q.get('skin') === 'paladin') this.skin = 'paladin';
+    if (q.get('unlock') === 'all') this.progress.best = 99;                              // ?unlock=all: every class
+    if (CLASSES[q.get('class')]) { this.cls = q.get('class'); this.titleKnight = null; }  // ?class=rogue|mage
+    if (q.has('pods')) this.forcePods = true;                                            // ?pods: the Rogue summons every spin
     if (q.get('model') && this.a.models[q.get('model')]) {             // ?title&model=name&yaw=deg: show any model on the plinth
       this.viewModel = q.get('model');
       this.viewYaw = parseFloat(q.get('yaw') || '0') * Math.PI / 180;
@@ -130,8 +142,36 @@ export class Game {
   }
 
   // =============================================================== run setup
+  unlocked(c) { return !CLASSES[c].unlock || this.progress.best >= CLASSES[c].unlock; }
+
+  // a symbol this class can ever hold: only a Mage wields magic, and a Mage never swings steel
+  symOk(id) {
+    const f = FAMILY[id];
+    return (this.player && this.player.cls === 'mage') ? f !== 'blade' : f !== 'spell';
+  }
+
+  reachFloor(f) {
+    if (f <= this.progress.best) return;
+    const before = CLASS_ORDER.filter(c => this.unlocked(c));
+    this.progress.best = f;
+    saveProgress(this.progress);
+    for (const c of CLASS_ORDER) {
+      if (!before.includes(c) && this.unlocked(c)) {
+        this.later(1.2, () => { this.ui.toast(`${CLASSES[c].name} is unlocked!`, this.time, '#ffd878', 3.4); this.audio.play('jackpot'); });
+      }
+    }
+  }
+
+  setClass(c) {
+    if (c === this.cls) return;
+    this.cls = c;
+    this.titleKnight = null;
+    try { if (this.unlocked(c)) localStorage.setItem('sd_class', c); } catch (e) { /* storage blocked */ }
+  }
+
   toTitle() {
     this.state = 'title';
+    this.titleKnight = this.viewModel ? this.titleKnight : null;
     this.menuFocus = 0;
     this.loadFloor(1, 1234567, true);
     this.slot.state.spinEnabled = false;
@@ -140,10 +180,14 @@ export class Game {
   }
 
   newRun() {
-    this.player = { hp: 25, maxHp: 25, gold: 0, bag: [...KNIGHT_BAG], relics: new Set(), armor: 0, evolve: {},
-                    kills: 0, cards: 0, might: 0, guard: 0, fortune: 0, luck: 0, blast: 0, venom: 0, lifesteal: 0 };
+    if (!this.unlocked(this.cls)) this.cls = 'knight';
+    const K = CLASSES[this.cls];
+    this.player = { cls: this.cls, hp: K.hp, maxHp: K.hp, gold: 0, bag: [...K.bag], relics: new Set(), armor: 0, evolve: {},
+                    kills: 0, cards: 0, might: 0, guard: K.guard || 0, fortune: 0, luck: K.luck || 0, blast: 0, venom: 0,
+                    lifesteal: 0, casts: 0 };
     this.runSeed = this.fixedSeed ?? ((Math.random() * 1e9) | 0);
-    this.slot.state.hp = 25; this.slot.state.maxHp = 25; this.slot.state.gold = 0;
+    this.slot.state.hp = K.hp; this.slot.state.maxHp = K.hp; this.slot.state.gold = 0;
+    this.slot.summonPods(false);
     this.loadFloor(1, this.runSeed + 1);
     this.fadeIn();
     this.ui.toast('Floor 1 - The Dungeon', this.time, '#e8c878', 2.6);
@@ -222,6 +266,10 @@ export class Game {
       if (now >= this.autoSpinAt) { this.autoSpinAt = 0; window.__log.push(`-- spin (turn ${this.combat.turn + 1})`); this.spinReels(); }
     }
     this.time = now;
+    if (this.autoSpin && this.combat && this.combat.phase !== this.lastPhase) {        // fight log: phase changes
+      this.lastPhase = this.combat.phase;
+      window.__log.push(`   ${now.toFixed(2)} ${this.lastPhase}${this.combat.queue ? ' q' + this.combat.queue.length : ''}`);
+    }
     this.fx.update(dt);
     const dropTo = this.state === 'shop' || (this.prompt && (this.prompt.kind === 'merchant' || this.prompt.kind === 'wayside')) ? 1 : 0;
     this.slot.drop += (dropTo - this.slot.drop) * Math.min(1, dt * 5);
@@ -278,9 +326,9 @@ export class Game {
 
   // =============================================================== title
   updateTitle(keys, clicks) {
-    // the Knight on the pedestal: heroic idle, then a rotating set of showpieces
+    // the chosen class on the pedestal: heroic idle, then a rotating set of showpieces
     if (!this.titleKnight) {
-      this.titleKnight = this.makeAnimator('knight');
+      this.titleKnight = this.makeAnimator(this.viewModel || CLASSES[this.cls].model);
       this.titleNext = this.time + 1.6;
       this.titleShow = 0;
     }
@@ -290,10 +338,14 @@ export class Game {
       A.play(shows[this.titleShow++ % shows.length], { fade: 0.15 });
       this.titleNext = this.time + 4.2;
     }
+    const menu = this.titleMenu();
+    this.menuFocus = Math.min(this.menuFocus, menu.length - 1);
     for (const k of keys) {
-      if (is(k, 'confirm')) this.titleAction(['start', 'skin', 'crt'][this.menuFocus]);
-      if (is(k, 'back') || is(k, 'turnR')) this.menuFocus = Math.min(2, this.menuFocus + 1);
-      if (is(k, 'forward') || is(k, 'turnL')) this.menuFocus = Math.max(0, this.menuFocus - 1);
+      if (is(k, 'confirm')) this.titleAction(menu[this.menuFocus]);
+      if (is(k, 'back')) this.menuFocus = Math.min(menu.length - 1, this.menuFocus + 1);
+      if (is(k, 'forward')) this.menuFocus = Math.max(0, this.menuFocus - 1);
+      if (is(k, 'turnL')) this.titleAction('cls:prev');
+      if (is(k, 'turnR')) this.titleAction('cls:next');
     }
     for (const c of clicks) { const id = this.ui.hit(c); if (id) this.titleAction(id); }
   }
@@ -304,10 +356,24 @@ export class Game {
     this.ui.toast(this.pipe.crt ? 'CRT filter on' : 'CRT filter off', this.time);
   }
 
+  titleMenu() { return this.cls === 'knight' ? ['start', 'skin', 'crt'] : ['start', 'crt']; }
+
   titleAction(id) {
     this.audio.play('click');
     if (id === 'crt') this.toggleCRT();
-    if (id === 'start') this.newRun();
+    if (id === 'cls:prev' || id === 'cls:next') {
+      const i = CLASS_ORDER.indexOf(this.cls), n = CLASS_ORDER.length;
+      this.setClass(CLASS_ORDER[(i + (id === 'cls:next' ? 1 : n - 1)) % n]);
+      this.audio.play('card');
+    }
+    if (id === 'start') {
+      if (!this.unlocked(this.cls)) {
+        this.audio.play('deny');
+        this.ui.toast(`Reach Floor ${CLASSES[this.cls].unlock} to unlock ${CLASSES[this.cls].name}`, this.time, '#ff8a6a');
+        return;
+      }
+      this.newRun();
+    }
     if (id === 'skin') {
       this.skin = this.skin === 'classic' ? 'paladin' : 'classic';
       this.audio.play('card');
@@ -550,6 +616,15 @@ export class Game {
       if (f.length === 6) C.grid = [f.slice(0, 3), f.slice(3, 6)];
       this.forceGrid = null;
     }
+    // Sleight of Hand: the Rogue shrinks the machine and summons two forest reels (columns 3 and 4)
+    C.pods = P.cls === 'rogue' && (this.forcePods || Math.random() < 0.25 + P.luck * 0.5);
+    if (C.pods) {
+      for (const row of C.grid) row.push(this.drawSymbol(), this.drawSymbol());
+      this.slot.summonPods(true);
+      this.banner('SLEIGHT OF HAND!', 'Two forest reels join the spin', '#8ae05a', 1.3);
+      this.audio.play('summon');
+      this.later(0.12, () => { for (const p of [3, 4]) this.fxEvent('summon', ...this.slot.reelAnchor(p, 0)); });
+    }
     this.slot.spin(C.grid, () => this.drawSymbol(), this.time);
     this.slot.state.spinEnabled = false;
     this.audio.play('spin');
@@ -561,7 +636,7 @@ export class Game {
     const C = this.combat;
     if (!C || C.phase !== 'spinning') return;
     C.stopped++;
-    if (C.stopped >= 3) this.beginResolve();
+    if (C.stopped >= C.grid[0].length) this.beginResolve();
   }
 
   beginResolve() {
@@ -572,7 +647,7 @@ export class Game {
     C.blessed = false; C.chain = false; C.stun = false;
     const flat = C.grid.flat();
     C.charm = flat.includes('charm');
-    C.swordsLanded = flat.some(s => FAMILY[s] === 'blade');
+    C.swordsLanded = flat.some(s => FAMILY[s] === 'blade' || FAMILY[s] === 'spell');
     // Loaded Dice: reroll the worst symbol before anything resolves
     if (flat.includes('dice')) {
       let worst = null;
@@ -598,7 +673,7 @@ export class Game {
       this.audio.play('luck');
     }
     for (const b of this.findBonuses(C.grid).sort((a, b) => hits(a) - hits(b))) C.queue.push(b);
-    for (let row = 0; row < 2; row++) for (let reel = 0; reel < 3; reel++) C.queue.push([row, reel]);
+    for (let row = 0; row < 2; row++) for (let reel = 0; reel < C.grid[row].length; reel++) C.queue.push([row, reel]);
     C.nextAt = this.time + (C.queue.length > 6 ? 0.35 : 0.15);
   }
 
@@ -608,21 +683,23 @@ export class Game {
     const fam = id => (SYMBOLS[id].wild ? 'wild' : FAMILY[id] || null);
     const out = [], lined = new Set();
     for (let row = 0; row < 2; row++) {
-      const fs = grid[row].map(fam);
+      const fs = grid[row].slice(0, 3).map(fam);
       const real = fs.filter(f => f !== 'wild');
       if (real.includes(null)) continue;
       const f = real.length ? real[0] : 'wild';
       const line = [[row, 0], [row, 1], [row, 2]];
       if (real.every(x => x === f) && LINE_BONUS[f]) {
-        out.push({ line: f, cells: line });
+        const pods = grid[row].length > 3 ? [fam(grid[row][3]), fam(grid[row][4])] : null;
+        const grand = pods && pods.every(p => p === f || p === 'wild');
+        out.push({ line: f, cells: grand ? [[row, 3], ...line, [row, 4]] : line, grand });
         lined.add(f);
       }
       // the same rare symbol three times: its own bonus on top
-      const ids = grid[row].filter(id => !SYMBOLS[id].wild);
+      const ids = grid[row].slice(0, 3).filter(id => !SYMBOLS[id].wild);
       if (ids.length && ids.every(id => id === ids[0]) && SPECIAL_LINE[ids[0]]) out.push({ special: ids[0], cells: line });
     }
     const cells = {};
-    for (let row = 0; row < 2; row++) for (let reel = 0; reel < 3; reel++) {
+    for (let row = 0; row < 2; row++) for (let reel = 0; reel < grid[row].length; reel++) {
       const f = fam(grid[row][reel]);
       if (f && f !== 'wild') (cells[f] = cells[f] || []).push([row, reel]);
     }
@@ -643,12 +720,13 @@ export class Game {
     let desc = L.desc;
     const roll = b.line === 'dice' ? [1, 2, 3].map(() => 1 + Math.floor(Math.random() * 6)) : null;
     if (roll) desc = `rolled ${roll.join(' + ')} = ${roll[0] + roll[1] + roll[2]} gold, and +10% Luck`;
-    this.banner(`${L.name}!`, `3 ${FAMILY_NAME[b.line]} in a row: ${desc}`, L.color);
+    if (b.grand) this.banner(`GRAND ${L.name}!`, `5 ${FAMILY_NAME[b.line]} across the forest reels: the bonus pays twice`, '#8aff6a', 1.8);
+    else this.banner(`${L.name}!`, `3 ${FAMILY_NAME[b.line]} in a row: ${desc}`, L.color);
     this.audio.play('jackpot');
-    this.slot.shake = 0.6;
+    this.slot.shake = b.grand ? 1 : 0.6;
     const [hx, hy] = this.slot.hpAnchor();
-    switch (b.line) {
-      case 'blade': P.might++; break;
+    for (let rep = 0; rep < (b.grand ? 2 : 1); rep++) switch (b.line) {
+      case 'blade': case 'spell': P.might++; break;
       case 'shield': P.guard++; P.armor += 1; this.ui.float('+1 Armor', hx, hy - 22, '#9ab8ff', this.time, { size: 13 }); break;
       case 'potion':
         P.maxHp += 3; this.slot.state.maxHp = P.maxHp;
@@ -716,6 +794,29 @@ export class Game {
         break;
       case 'spiked': P.guard++; if (e.alive) this.damageEnemy(5, true); break;
       case 'potion3': this.heal(P.maxHp, 0, 0); break;
+      case 'firebolt': e.burn = Math.max(e.burn || 0, 6); this.ui.float('Ablaze!', ...this.enemyScreen(0.8), '#ff8a3a', this.time, { size: 15 }); break;
+      case 'frost':
+        C.stun = true; e.stunTurns = 1; e.chill = Math.max(e.chill || 0, 3);
+        this.ui.float('Frozen solid!', ...this.enemyScreen(1.05), '#a8e8ff', this.time, { size: 15 });
+        this.fxEvent('chill', ...this.enemyScreen(0.6));
+        break;
+      case 'toxic': if (e.alive) { e.poison += 8; this.ui.float(`Poison ${e.poison}`, ...this.enemyScreen(0.7), '#8aff6a', this.time, { size: 14 }); } break;
+      case 'chain':
+        for (let k = 0; k < 4; k++) this.later(k * 0.16, () => { if (e.alive) { this.damageEnemy(3, true); this.fxEvent('chainStrike', ...this.enemyScreen(0.55)); } });
+        break;
+      case 'fireball': if (e.alive) { this.damageEnemy(14, true); e.burn = Math.max(e.burn || 0, 4); } break;
+      case 'missiles':
+        for (let k = 0; k < 8; k++) this.later(k * 0.09, () => { if (e.alive) this.damageEnemy(1 + P.might, false); });
+        break;
+      case 'drain': if (e.alive) this.damageEnemy(8, true); this.heal(8, 0, 0); break;
+      case 'icelance':
+        if (e.alive) this.damageEnemy(12, true);
+        if (e.alive) { C.stun = true; e.chill = Math.max(e.chill || 0, 2); this.ui.float('Frozen!', ...this.enemyScreen(1.05), '#a8e8ff', this.time, { size: 15 }); }
+        break;
+      case 'void':
+        if (e.alive && e.hp <= e.maxHp * 0.5) { this.ui.float('Erased!', ...this.enemyScreen(1.05), '#c8a0ff', this.time, { size: 16 }); this.damageEnemy(e.hp, true); }
+        else if (e.alive) this.damageEnemy(10, true);
+        break;
     }
     if (C.phase === 'resolving') C.nextAt = this.time + 1.25;
   }
@@ -738,7 +839,7 @@ export class Game {
     switch (b.scatter) {
       case 'chest': C.rewards.push({ n: 3, source: 'bonus' }); break;
       case 'clover': C.freeSpin = true; break;
-      case 'blade': C.frenzy = true; break;
+      case 'blade': case 'spell': C.frenzy = true; break;
       case 'coin': C.doubleGold = true; break;
       case 'shield': P.armor += 3; this.ui.float('+3 Armor', hx, hy - 22, '#9ab8ff', this.time, { size: 13 }); this.audio.play('block'); break;
       case 'potion': this.heal(3, 0, 0); break;
@@ -765,7 +866,7 @@ export class Game {
       this.ui.float(`? > ${SYMBOLS[id].name}`, ax, ay - 16, '#e8e0ff', this.time, { size: 12 });
     }
     if (SYMBOLS[id].morph) {
-      const pool = Object.keys(SYMBOLS).filter(s => SYMBOLS[s].rarity !== 'common' && !SYMBOLS[s].morph && !SYMBOLS[s].self);
+      const pool = Object.keys(SYMBOLS).filter(s => SYMBOLS[s].rarity !== 'common' && !SYMBOLS[s].morph && !SYMBOLS[s].self && this.symOk(s));
       id = pool[Math.floor(Math.random() * pool.length)];
       this.ui.float(`Mimic > ${SYMBOLS[id].name}`, ax, ay - 16, '#ffd24a', this.time, { size: 12 });
     }
@@ -774,6 +875,12 @@ export class Game {
     if (s.twice && Math.random() < s.twice) times++;
     if (C.charm && !s.charm && Math.random() < 0.25) times++;
     if (C.blessed) times++;
+    // Spellweaver: every 4th spell the Mage casts echoes
+    if (s.spell && this.player.cls === 'mage' && ++this.player.casts % 4 === 0) {
+      times++;
+      this.ui.float('Echo!', ax - 20, ay - 26, '#d8b0ff', this.time, { size: 14 });
+      this.later(0.05, () => this.fxEvent('echo', ax, ay));
+    }
     if (times > 1) this.ui.float('x2!', ax + 22, ay - 20, '#7aff8a', this.time, { size: 14 });
     const travel = RECIPES[id] ? RECIPES[id].travel : 0;
     for (let t = 0; t < times; t++) {
@@ -781,7 +888,8 @@ export class Game {
       if (t === 0) go(); else this.later(t * 0.2, go);
       this.later(t * 0.2 + travel, () => { if (this.combat === C && this.player.hp > 0) this.applySymbol(id, s, ax, ay, t); });
     }
-    C.nextAt = this.time + travel + (times - 1) * 0.2 + (times > 1 ? 0.5 : 0.34);
+    const pace = C.grid[0].length > 3 ? 0.7 : 1;                   // ten reels to resolve: quicker beats
+    C.nextAt = this.time + (travel + (times - 1) * 0.2 + (times > 1 ? 0.5 : 0.34)) * pace;
   }
 
   // ---- card / symbol effects: a symbol's icon flies to its target and lands with its own burst + sound
@@ -831,13 +939,14 @@ export class Game {
   applySymbolInner(id, s, ax, ay, rep, I) {
     const C = this.combat, P = this.player, e = C.e;
     const oy = rep * -14;
-    if (s.dmg && e.alive && e.def.dodge && Math.random() < e.def.dodge) {
+    if (s.dmg && e.alive && e.def.dodge && !s.sure && Math.random() < e.def.dodge) {
       this.ui.float('Miss!', ...this.enemyScreen(0.8), '#c8c8d8', this.time, { size: 14 });
       this.sfx('bump');
       I.miss = true;
     } else if (s.dmg && e.alive) {
       let dmg = (s.dmgRoll ? s.dmgRoll[0] + Math.floor(Math.random() * (s.dmgRoll[1] - s.dmgRoll[0] + 1)) : s.dmg) + P.might;
       if (s.phalanx) dmg += C.grid.flat().filter(x => x === id).length - 1;
+      if (s.arc) dmg += C.grid.flat().filter(x => FAMILY[x] === 'spell').length - 1;
       if (s.beam && P.hp >= P.maxHp) { dmg += s.beam; I.beam = true; this.ui.float('Dawnlight!', ax, ay - 30, '#a8e8ff', this.time, { size: 13 }); }
       if (s.trigger && Math.random() < s.trigger) { dmg += 3; I.trigger = true; this.ui.float('BANG!', ax, ay - 30, '#ffd24a', this.time, { size: 13 }); }
       if ((s.aoe || s.burn) && P.relics.has('ember_core')) dmg += 2;
@@ -872,6 +981,17 @@ export class Game {
         this.damageEnemy(e.hp, true);
       }
       if (s.poison) { e.poison += s.poison + P.venom; this.ui.float(`Poison ${e.poison}`, ...this.enemyScreen(0.7), '#8aff6a', this.time, { size: 12 }); }
+      if (s.chill && e.alive) {
+        e.chill = Math.max(e.chill || 0, s.chill);
+        this.ui.float('Chilled!', ...this.enemyScreen(0.95), '#a8e8ff', this.time, { size: 13 });
+        this.fxEvent('chill', ...this.enemyScreen(0.6));
+      }
+      if (s.freeze && e.alive && Math.random() < s.freeze) {
+        C.stun = true;
+        I.stun = true;
+        this.ui.float('Frozen!', ...this.enemyScreen(1.05), '#a8e8ff', this.time, { size: 14 });
+      }
+      if (s.leech) this.heal(s.leech, ax, ay);
     }
     if (s.armor) {
       let a = s.armor + (s.guard && C.swordsLanded ? s.guard : 0);
@@ -985,6 +1105,7 @@ export class Game {
   finishResolve() {
     const C = this.combat, e = C.e;
     this.slot.highlight(-1, -1);
+    this.slot.summonPods(false);
     if (C.vials && C.dealt) this.heal(Math.min(3, C.vials * C.dealt), 0, 0);
     if (this.player.lifesteal && C.dealt) this.heal(this.player.lifesteal, 0, 0);
     if (!e.alive) return;
@@ -1036,6 +1157,12 @@ export class Game {
     if (!bonus && e.def.charge && C.turn % e.def.charge === 0) {
       dmg *= 2;
       this.ui.toast(`The ${e.def.name} charges!`, this.time, '#ff8a6a');
+    }
+    if (e.chill > 0 && !bonus) {
+      dmg = Math.max(0, dmg - 1);
+      e.chill--;
+      const [x, y] = this.enemyScreen(0.9);
+      this.ui.float('Chilled -1', x, y, '#a8e8ff', this.time, { size: 12 });
     }
     const absorbed = Math.min(P.armor, dmg);
     dmg -= absorbed;
@@ -1106,6 +1233,7 @@ export class Game {
     C.phase = 'won';
     C.nextAt = this.time + 1.9;
     this.slot.state.spinEnabled = false;
+    this.later(0.8, () => this.slot.summonPods(false));
   }
 
   afterVictory() {
@@ -1145,7 +1273,11 @@ export class Game {
   // =============================================================== cards
   eligibleCards() {
     const bag = this.player.bag;
+    const mage = this.player.cls === 'mage';
     return Object.entries(CARDS).filter(([id, c]) => {
+      if (c.cls && c.cls !== this.player.cls) return false;                       // spells are the Mage's alone
+      const makes = c.type === 'add' ? c.sym : c.type === 'upgrade' ? c.to : null;
+      if (makes && !this.symOk(makes)) return false;                              // ... and she never takes up steel
       if (c.type === 'upgrade') return c.from.some(f => bag.includes(f));
       if (c.type === 'passive') return !this.player.relics.has(c.relic);
       if (c.type === 'purge') return bag.includes('skull');
@@ -1359,6 +1491,7 @@ export class Game {
     this.audio.play('descend');
     this.fade = { t: 0, out: true, then: () => {
       const f = this.floor + 1;
+      this.reachFloor(f);
       this.loadFloor(f, this.runSeed + f * 7919);
       const b = BIOMES[biomeForFloor(f)];
       this.ui.toast(`Floor ${f} - The ${b.name}`, this.time, '#e8c878', 2.6);
@@ -1587,17 +1720,19 @@ export class Game {
   }
 
   drawTitleKnight(now) {
-    const k = this.a.models[this.viewModel || 'knight'];
+    const k = this.a.models[this.viewModel || CLASSES[this.cls].model];
     const fx = Math.sin(this.cam.yaw), fz = Math.cos(this.cam.yaw);
     const rx = -fz, rz = fx;                                                    // camera right (lookAt x axis)
     const x = this.cam.x + fx * 2.0 + rx * 0.6, z = this.cam.z + fz * 2.0 + rz * 0.6;
     const yaw = this.cam.yaw + Math.PI + (this.viewModel ? this.viewYaw : Math.sin(now * 0.35) * 0.35);
     const A = this.titleKnight;
     const mats = A ? A.matrices() : null;
-    const tex = this.skin === 'paladin' ? this.paladin() : null;
+    const tex = this.skin === 'paladin' && this.cls === 'knight' && !this.viewModel ? this.paladin() : null;
+    const locked = !this.viewModel && !this.unlocked(this.cls);                   // a locked class stands in silhouette
     this.R.drawModel(this.a.models.dun_pillar, mul(trs(x, -2.32, z, 0), [1.4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1.4, 0, 0, 0, 0, 1]));
     this.R.drawModel(k, trs(x, 0.28, z, yaw, 0, 0, 0.9), { mats, texOverride: tex ? { bake_knight: tex } : null,
-                                                     hide: this.viewModel ? new Set(['weapon']) : undefined });
+                                                     hide: this.viewModel ? new Set(['weapon']) : undefined,
+                                                     tint: locked ? [0.05, 0.04, 0.07] : undefined });
     this.titleKnightPos = [x, 1.35, z];
   }
 
@@ -1675,6 +1810,7 @@ export class Game {
       U.text(`${e.atk}`, x + bw / 2 + 19, y - 4, { size: 11, color: '#ffb0a0' });
       if (e.poison) { U.icon(this.a.icons48.dagger, x - bw / 2 - 17, y - 15, 14); U.text(`${e.poison}`, x - bw / 2 - 20, y - 4, { size: 10, align: 'right', color: '#8aff6a' }); }
       if (e.burn) { U.icon(this.a.icons48.fire, x - bw / 2 - 17, y - 1, 14); U.text(`${e.burn}`, x - bw / 2 - 20, y + 10, { size: 10, align: 'right', color: '#ff8a3a' }); }
+      if (e.chill) { U.icon(this.a.icons48.frost, x + bw / 2 + 3, y - 1, 14); U.text(`${e.chill}`, x + bw / 2 + 19, y + 10, { size: 10, color: '#a8e8ff' }); }
       if (e.stunTurns > 0 || (this.combat.stun)) U.text('STUNNED', x, y - 22, { size: 9, align: 'center', color: '#ffe070' });
       U.text(`${Math.max(0, e.hp)}/${e.maxHp}`, x, y + 8, { size: 9, align: 'center', color: '#e8d8d0' });
       if (this.combat.phase === 'ready') {
@@ -1797,14 +1933,24 @@ export class Game {
     }
     const bx = Math.round(W * 0.27 - 70);
     let y = Math.round(H * 0.64);
-    U.button('start', 'DESCEND', bx, y, 140, 24, ptr, { size: 14, focus: this.menuFocus === 0, fill: '#6a1c22', hotFill: '#8a262e' });
-    U.button('skin', `Skin: ${this.skin === 'classic' ? 'Knight' : 'Paladin'}`, bx, y + 32, 140, 20, ptr, { size: 11, focus: this.menuFocus === 1 });
-    U.button('crt', `CRT filter: ${this.pipe.crt ? 'On' : 'Off'}  [V]`, bx, y + 58, 140, 20, ptr, { size: 11, focus: this.menuFocus === 2 });
-    // character plate
-    const px = Math.round(W * 0.66), py = Math.round(H * 0.78);
-    U.text('THE KNIGHT', px, py, { size: 15, align: 'center', spacing: 1 });
-    U.text('Balanced', px, py + 14, { size: 10, align: 'center', color: '#c8bca8', bold: false });
-    U.text('Rogue & Mage: coming soon', px, py + 28, { size: 9, align: 'center', color: '#8a8290', bold: false });
+    const menu = this.titleMenu();
+    const K = CLASSES[this.cls], open = this.unlocked(this.cls);
+    U.button('start', open ? 'DESCEND' : 'LOCKED', bx, y, 140, 24, ptr, { size: 14, focus: this.menuFocus === 0, fill: open ? '#6a1c22' : '#2a2430', hotFill: open ? '#8a262e' : '#3a3440' });
+    y += 32;
+    if (menu.includes('skin')) {
+      U.button('skin', `Skin: ${this.skin === 'classic' ? 'Knight' : 'Paladin'}`, bx, y, 140, 20, ptr, { size: 11, focus: this.menuFocus === menu.indexOf('skin') });
+      y += 26;
+    }
+    U.button('crt', `CRT filter: ${this.pipe.crt ? 'On' : 'Off'}  [V]`, bx, y, 140, 20, ptr, { size: 11, focus: this.menuFocus === menu.indexOf('crt') });
+    // character plate: < THE ROGUE >, her passive, and what unlocks her
+    const px = Math.round(W * 0.66), py = Math.round(H * 0.74);
+    U.text(open ? K.name : '? ? ?', px, py, { size: 15, align: 'center', spacing: 1, color: open ? '#f2ead8' : '#8a8290' });
+    U.button('cls:prev', '<', px - 96, py - 14, 20, 18, ptr, { size: 12 });
+    U.button('cls:next', '>', px + 76, py - 14, 20, 18, ptr, { size: 12 });
+    U.text(open ? `${K.sub}  -  ${K.hp} HP` : K.sub, px, py + 13, { size: 10, align: 'center', color: '#c8bca8', bold: false });
+    if (open) U.wrap(K.passive, 230, 9).forEach((l, i) => U.text(l, px, py + 27 + i * 10, { size: 9, align: 'center', color: '#e8c070', bold: false }));
+    else U.text(`Reach Floor ${K.unlock} to unlock`, px, py + 28, { size: 10, align: 'center', color: '#ff9a7a' });
+    U.text('A / D: choose class', px, py + 58, { size: 8, align: 'center', color: '#8a8290', bold: false });
     U.text('Spin. Fight. Loot. Upgrade. Die. Spin again.', W / 2, H - 8, { size: 9, align: 'center', color: '#a898a0', bold: false });
   }
 
@@ -1923,14 +2069,18 @@ export class Game {
     };
     const RH = 12.5;
     let y = y0 + 8;
+    const hide = P.cls === 'mage' ? 'blade' : 'spell';
+    const lines = Object.entries(LINE_BONUS).filter(([f]) => f !== hide);
+    const scat = Object.entries(SCATTER_BONUS).filter(([f]) => f !== hide);
+    const spec = Object.entries(SPECIAL_LINE).filter(([id]) => this.symOk(id)).slice(0, 18);
     U.text('3 IN A ROW  (permanent, Wildcards fill in)', xl, y, { size: 9, color: '#ffd878' });
-    Object.entries(LINE_BONUS).forEach(([f, L], i) => row(xl, y + 14 + i * RH, FAMILY_ICON[f], L.name, L.color, L.short));
-    y += 14 + Object.keys(LINE_BONUS).length * RH + 8;
+    lines.forEach(([f, L], i) => row(xl, y + 14 + i * RH, FAMILY_ICON[f], L.name, L.color, L.short));
+    y += 14 + lines.length * RH + 8;
     U.text(`3 ANYWHERE  (bonus roll, +${Math.round(P.luck * 100)}% Luck)`, xl, y, { size: 9, color: '#ffd878' });
-    Object.entries(SCATTER_BONUS).forEach(([f, S], i) =>
+    scat.forEach(([f, S], i) =>
       row(xl, y + 14 + i * RH, FAMILY_ICON[f], S.name, S.color, S.desc, Math.round(Math.min(1, S.chance + P.luck) * 100)));
     U.text('SAME RARE SYMBOL x3 IN A ROW  (extra bonus)', xr, y0 + 8, { size: 9, color: '#ffd878' });
-    Object.entries(SPECIAL_LINE).forEach(([id, S], i) => row(xr, y0 + 22 + i * RH, SYMBOLS[id].icon, S.name, S.color, S.short));
+    spec.forEach(([id, S], i) => row(xr, y0 + 22 + i * RH, SYMBOLS[id].icon, S.name, S.color, S.short));
   }
 
   drawMap() {

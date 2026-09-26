@@ -58,6 +58,29 @@ const SFX = {
   epic_pick: A => { arp(A, [392, 523, 659, 784, 1047, 1319, 1568], 0.06, { vol: 0.08, type: 'square', dur: 0.28 }); A.noise(0.6, { vol: 0.08, freq: 6000, q: 1 }); A.tone(98, 0.6, { vol: 0.15, type: 'sine' }); },
   legend_pick: A => { A.noise(0.9, { vol: 0.3, freq: 250, type: 'lowpass', slide: 3 }); A.tone(65, 0.9, { vol: 0.3, type: 'sine', slide: 0.7 }); arp(A, [523, 659, 784, 1047, 1319, 1568, 2093], 0.075, { vol: 0.09, type: 'square', dur: 0.4, delay: 0.1 }); arp(A, [1047, 1568, 2093, 2637], 0.1, { vol: 0.05, type: 'sine', dur: 0.6, delay: 0.7 }); },
   kill: A => { A.noise(0.5, { vol: 0.3, freq: 1200, q: 0.8, slide: 0.2 }); arp(A, [659, 523, 392], 0.08, { vol: 0.06, type: 'square', dur: 0.2 }); },
+  // ---- the Mage's spells
+  cast: A => { A.tone(660, 0.18, { vol: 0.06, type: 'sine', slide: 1.8 }); A.noise(0.16, { vol: 0.07, freq: 5000, q: 2, slide: 0.6 }); },
+  zap: A => { A.tone(1760, 0.1, { vol: 0.07, type: 'square', slide: 0.4 }); A.noise(0.08, { vol: 0.12, freq: 4200, q: 3 }); },
+  arcane: A => { A.tone(440, 0.3, { vol: 0.1, type: 'sawtooth', slide: 0.5 }); A.tone(880, 0.26, { vol: 0.06, type: 'sine', slide: 0.5, delay: 0.02 }); A.noise(0.2, { vol: 0.14, freq: 2400, q: 1.5 }); },
+  firecast: A => { A.noise(0.3, { vol: 0.12, freq: 700, q: 0.8, slide: 2.4 }); crackle(A, 4, 0.2, { vol: 0.06 }); },
+  firebolt: A => { A.noise(0.35, { vol: 0.26, freq: 500, q: 0.6, slide: 0.5 }); crackle(A, 8, 0.4, { vol: 0.08 }); A.tone(110, 0.2, { vol: 0.12, type: 'sine', slide: 0.6 }); },
+  icecast: A => { arp(A, [2093, 2637, 3136], 0.035, { vol: 0.04, type: 'sine', dur: 0.2 }); A.noise(0.2, { vol: 0.06, freq: 7000, q: 2 }); },
+  frost: A => { for (let i = 0; i < 5; i++) A.tone(2400 + Math.random() * 1800, 0.12, { vol: 0.05, type: 'triangle', delay: i * 0.03 }); A.noise(0.25, { vol: 0.16, freq: 5500, q: 1.5, slide: 0.5 }); },
+  toxcast: A => { for (let i = 0; i < 3; i++) A.tone(200 + i * 60, 0.1, { vol: 0.05, type: 'sine', slide: 1.8, delay: i * 0.06 }); },
+  toxic: A => { A.noise(0.6, { vol: 0.14, freq: 600, q: 0.6, slide: 0.6 }); for (let i = 0; i < 6; i++) A.tone(180 + Math.random() * 200, 0.08, { vol: 0.05, type: 'sine', slide: 2, delay: 0.1 + i * 0.07 }); },
+  thunder: A => { A.noise(0.12, { vol: 0.5, freq: 3000, q: 0.5 }); A.noise(0.9, { vol: 0.4, freq: 180, type: 'lowpass', slide: 0.6, delay: 0.04 }); A.tone(60, 0.6, { vol: 0.25, type: 'sine', slide: 0.5, delay: 0.04 }); crackle(A, 10, 0.3, { vol: 0.1 }); },
+  missiles: A => { for (let i = 0; i < 3; i++) { A.tone(1320 - i * 120, 0.12, { vol: 0.06, type: 'square', slide: 0.5, delay: i * 0.06 }); A.noise(0.08, { vol: 0.1, freq: 3000, q: 2, delay: i * 0.06 }); } },
+  icelance: A => { A.noise(0.12, { vol: 0.3, freq: 6000, q: 1 }); A.tone(3136, 0.4, { vol: 0.05, type: 'sine', slide: 0.7 }); for (let i = 0; i < 8; i++) A.tone(2000 + Math.random() * 2500, 0.1, { vol: 0.04, type: 'triangle', delay: 0.04 + i * 0.03 }); A.tone(90, 0.25, { vol: 0.16, type: 'sine', slide: 0.6 }); },
+  meteorcall: A => { A.noise(0.6, { vol: 0.18, freq: 300, q: 0.7, slide: 3.5 }); A.tone(180, 0.6, { vol: 0.07, type: 'sawtooth', slide: 0.4 }); },
+  meteor: A => { A.noise(1.2, { vol: 0.75, freq: 160, type: 'lowpass', slide: 0.4 }); A.tone(44, 1.0, { vol: 0.55, type: 'sine', slide: 0.5 }); A.noise(0.3, { vol: 0.3, freq: 2400 }); crackle(A, 14, 0.9, { vol: 0.09 }); },
+  voidcast: A => { A.tone(120, 0.4, { vol: 0.1, type: 'sawtooth', slide: 0.6 }); A.tone(127, 0.4, { vol: 0.08, type: 'sawtooth', slide: 0.6 }); },
+  void: A => { A.noise(0.8, { vol: 0.25, freq: 2000, q: 1, slide: 0.1 }); A.tone(300, 0.8, { vol: 0.12, type: 'sine', slide: 0.15 }); A.tone(75, 0.9, { vol: 0.2, type: 'sine', slide: 0.6, delay: 0.2 }); },
+  starcall: A => arp(A, [1568, 2093, 2637, 3136], 0.06, { vol: 0.05, type: 'sine', dur: 0.3 }),
+  starfall: A => { for (let i = 0; i < 5; i++) { A.tone(2093 - i * 180, 0.25, { vol: 0.05, type: 'sine', slide: 0.5, delay: i * 0.07 }); A.noise(0.1, { vol: 0.14, freq: 1400, delay: 0.05 + i * 0.07 }); } A.tone(98, 0.5, { vol: 0.16, type: 'sine', delay: 0.3 }); },
+  prism: A => { A.tone(1047, 0.6, { vol: 0.06, type: 'sine' }); A.tone(1319, 0.6, { vol: 0.05, type: 'sine', delay: 0.03 }); A.tone(1568, 0.6, { vol: 0.05, type: 'sine', delay: 0.06 }); A.noise(0.5, { vol: 0.1, freq: 6000, q: 1 }); A.tone(220, 0.5, { vol: 0.08, type: 'sawtooth', slide: 2 }); },
+  echo: A => { arp(A, [880, 1319, 1760], 0.05, { vol: 0.05, type: 'sine', dur: 0.3 }); arp(A, [880, 1319, 1760], 0.05, { vol: 0.025, type: 'sine', dur: 0.3, delay: 0.18 }); },
+  // ---- the Rogue's summoned forest reels: a rustle of leaves and a wooden chime
+  summon: A => { A.noise(0.5, { vol: 0.16, freq: 3500, q: 0.8, slide: 0.5 }); arp(A, [523, 659, 784, 1047], 0.06, { vol: 0.07, type: 'triangle', dur: 0.3 }); A.tone(196, 0.3, { vol: 0.12, type: 'sine', slide: 1.5 }); },
 };
 
 export class Audio {

@@ -4,9 +4,9 @@
 // Reels are cylinders with 8 symbol slots around them; their texture is a
 // canvas strip redrawn whenever the slots change. Rotation theta = k * PI/4
 // shows slot k in the top row and slot k-1 in the bottom row.
-import { gl, updateTex } from './gl.js?v=20260925194320';
-import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925194320';
-import { SYMBOLS } from './data.js?v=20260925194320';
+import { gl, updateTex } from './gl.js?v=20260925231244';
+import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925231244';
+import { SYMBOLS } from './data.js?v=20260925231244';
 
 const SLOTS = 8, CELLPX = 96;
 const STEP = Math.PI * 2 / SLOTS;
@@ -17,7 +17,8 @@ export class SlotMachine {
     this.r = renderer;
     this.assets = assets;
     this.model = assets.models.slot_machine;
-    this.reels = [0, 1, 2].map(i => ({
+    // reels 0-2 live in the machine; 3 and 4 are the Rogue's summoned forest pods (top left / top right)
+    this.reels = [0, 1, 2, 3, 4].map(i => ({
       slots: new Array(SLOTS).fill('sword'), k: 0, theta: 0, from: 0, to: 0, t0: 0, dur: 0, spinning: false,
       canvas: Object.assign(document.createElement('canvas'), { width: CELLPX, height: CELLPX * SLOTS }),
       tex: gl.createTexture(), highlight: -1, dirty: true, bounce: 0,
@@ -29,6 +30,9 @@ export class SlotMachine {
     this.state = { hp: 25, maxHp: 25, gold: 0, spinEnabled: false, spinHover: false, spinLabel: 'SPIN' };
     this.press = 0;
     this.drop = 0;                                                // 0 = in place, 1 = slid down out of view (merchant)
+    this.podModel = assets.models.reel_pod;
+    this.podsOn = false;                                          // the Rogue's pods are summoned for this spin
+    this.podT = 0;                                                // 0 = gone, 1 = fully grown in (the machine shrinks)
     this.shake = 0;
     this.time = 0;
     this.drawnState = '';
@@ -55,13 +59,37 @@ export class SlotMachine {
     this.topY = -hh + 1.47 * s;                                   // machine top (world, for layout of cards)
     this.screenTop = (1 - (this.topY / hh + 1) / 2) * H;          // machine top in screen pixels
     this.hudHalfH = hh;
+    this.hudHalfW = hw;
   }
+
+  // ---------------------------------------------------------------- the Rogue's pods
+  podScale() { return 0.82 * this.base.s; }
+
+  podMatrix(p) {
+    const { s } = this.base;
+    const k = this.podT;
+    const grow = k < 1 ? 1 - Math.pow(1 - k, 3) + Math.sin(k * Math.PI) * 0.12 : 1;     // pop in with a little overshoot
+    const ps = this.podScale() * Math.max(0.001, grow);
+    const side = p === 0 ? -1 : 1;
+    const x = side * Math.min(2.25 * s, this.hudHalfW - 0.7 * this.podScale());
+    const bob = Math.sin(this.time * 2.2 + p * 2) * 0.025 * s;
+    const d = this.drop * this.drop * (3 - 2 * this.drop);
+    return trs(x, this.base.y + 1.02 * s + bob - d * 3.2 * s, -0.4, -side * 0.28, 0, 0, ps);
+  }
+
+  projectM(M, x, y, z) {
+    const p = xform(mul(mul(this.proj, this.view), M), x, y, z);
+    return [(p[0] * 0.5 + 0.5) * this.W, (1 - (p[1] * 0.5 + 0.5)) * this.H];
+  }
+
+  summonPods(on) { this.podsOn = on; }
 
   matrix() {
     const { s, y } = this.base;
     const sh = this.shake > 0 ? (Math.sin(this.time * 70) * 0.03 * this.shake) : 0;
     const d = this.drop * this.drop * (3 - 2 * this.drop);        // smoothstep
-    return trs(sh, y - d * 1.9 * s, 0, 0, 0, 0, s);
+    const k = this.podT * this.podT * (3 - 2 * this.podT);        // shrinks while the Rogue's pods are out
+    return trs(sh, y - d * 1.9 * s, 0, 0, 0, 0, s * (1 - 0.16 * k));
   }
 
   project(x, y, z) {
@@ -77,13 +105,18 @@ export class SlotMachine {
 
   hpAnchor() { return this.project(-1.72, 1.0, 0.16); }
   goldAnchor() { return this.project(1.72, 0.4, 0.16); }
-  reelAnchor(i, row) { return this.project([-0.655, 0, 0.655][i], row === 0 ? 0.92 : 0.44, 0.2); }
+  reelAnchor(i, row) {
+    if (i >= 3) return this.projectM(this.podMatrix(i - 3), 0, row === 0 ? 0.92 : 0.44, 0.2);
+    return this.project([-0.655, 0, 0.655][i], row === 0 ? 0.92 : 0.44, 0.2);
+  }
 
   // ---------------------------------------------------------------- spinning
   // grid[row][reel]: final symbols; pool(): random filler symbol
   spin(grid, pool, now) {
     this.spinStart = now;
+    const n = grid[0].length;                                     // 5 when the Rogue's pods are out
     this.reels.forEach((r, i) => {
+      if (i >= n) return;
       const old = r.k;
       let k;
       do { k = Math.floor(Math.random() * SLOTS); } while ([old - 1, old, old + 1].some(v => ((v % SLOTS) + SLOTS) % SLOTS === k));
@@ -98,7 +131,7 @@ export class SlotMachine {
       r.to = r.theta + Math.PI * 2 * (3 + i) + delta * STEP;
       r.k = k;
       r.t0 = now;
-      r.dur = 1.15 + i * 0.42;
+      r.dur = i < 3 ? 1.15 + i * 0.42 : 2.3 + (i - 3) * 0.35;
       r.spinning = true;
       r.stopped = false;
       r.highlight = []; r.hlKey = '';
@@ -112,6 +145,7 @@ export class SlotMachine {
   // show a fixed result instantly (start of a run)
   setStatic(grid) {
     this.reels.forEach((r, i) => {
+      if (grid[0][i] === undefined) return;
       r.slots[r.k] = grid[0][i];
       r.slots[(r.k + SLOTS - 1) % SLOTS] = grid[1][i];
       r.dirty = true;
@@ -138,6 +172,7 @@ export class SlotMachine {
       this.drawnState = '';
     }
     this.press = Math.max(0, this.press - dt * 4);
+    this.podT = this.podsOn ? Math.min(1, this.podT + dt * 3.2) : Math.max(0, this.podT - dt * 2.4);
     this.shake = Math.max(0, this.shake - dt * 3);
     for (const [i, r] of this.reels.entries()) {
       if (r.spinning) {
@@ -245,5 +280,13 @@ export class SlotMachine {
     const pose = { spin_button: { tz: -0.05 * this.press } };
     this.reels.forEach((r, i) => { pose['reel' + i] = { rx: r.theta - Math.sin(r.bounce * Math.PI) * 0.05 }; });
     R.drawModel(this.model, this.matrix(), { pose });
+    if (this.podT > 0.002 && this.podModel) {
+      for (const p of [0, 1]) {
+        const r = this.reels[3 + p];
+        R.drawModel(this.podModel, this.podMatrix(p), {
+          pose: { reel: { rx: r.theta - Math.sin(r.bounce * Math.PI) * 0.05 } }, texOverride: { '@reelx': r.tex },
+        });
+      }
+    }
   }
 }

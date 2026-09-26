@@ -80,6 +80,11 @@ export class FX {
                       shape: 'bolt', col, add: true, rot: 0, vr: 0, alpha: 1 });
   }
 
+  beam(x0, y0, x1, y1, dur, col, w = 4) {                // a straight ray that thins out as it fades
+    this.parts.push({ x: x0, y: y0, x1, y1, vx: 0, vy: 0, g: 0, drag: 0, t: 0, life: dur, size: w, size1: w * 0.2,
+                      shape: 'beam', col, add: true, rot: 0, vr: 0, alpha: 1 });
+  }
+
   slash(x, y, ang, len, dur, col, w = 3) {                // a crescent swipe across the target
     this.parts.push({ x, y, vx: 0, vy: 0, g: 0, drag: 0, t: 0, life: dur, size: len, size1: len * 1.15, shape: 'slash',
                       col, add: true, rot: ang, vr: 0, alpha: 1, w });
@@ -256,6 +261,15 @@ export class FX {
           g.stroke();
         }
         g.restore(); break;
+      }
+      case 'beam': {
+        g.lineCap = 'round';
+        g.lineWidth = s * 2.2; g.globalAlpha *= 0.35;
+        g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x1, p.y1); g.stroke();
+        g.globalAlpha /= 0.35; g.lineWidth = s;
+        g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x1, p.y1); g.stroke();
+        g.strokeStyle = '#ffffff'; g.lineWidth = Math.max(0.5, s * 0.35);
+        g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x1, p.y1); g.stroke(); break;
       }
       case 'bolt': {
         g.lineWidth = p.size; g.lineJoin = 'round';
@@ -665,6 +679,199 @@ Object.assign(RECIPES, {
   }),
 });
 
+
+// ---------------------------------------------------------------- the Mage's spells
+// Every spell leaves the reel with a casting flash and its own sigil ring, flies (or strikes) at the foe,
+// and lands with its own element's burst and sound.
+C.arcane = ['#ffffff', '#e0c8ff', '#b07aff', '#7a4ae0'];
+const castFlash = (fx, x, y, col) => {
+  fx.glow(x, y, 20, 0.3, col);
+  fx.ring(x, y, 3, 22, 0.3, col, 2);
+};
+const SPELL = (o) => ({
+  target: 'enemy', travel: o.travel || 0.3,
+  launch(fx, a, b, S) {
+    S.play(o.cast || 'cast');
+    castFlash(fx, a[0], a[1], o.glow || 'rgba(176,122,255,0.9)');
+    if (o.launch) { o.launch(fx, a, b, S, this.travel); return; }
+    fx.shot({ from: a, to: b, dur: this.travel, arc: o.arc ?? 18, img: o.img ? S.icon : null, spin: o.spin ?? 0, point: o.point,
+              scale: o.scale || 1, head: o.head, trail: o.trail, rate: o.rate || 90, ease: o.ease });
+  },
+  impact(fx, x, y, S, I) { o.hit(fx, x, y, S, I); },
+});
+Object.assign(RECIPES, {
+  spark: SPELL({
+    head: { r: 5, col: 'rgba(176,122,255,0.85)' },
+    trail: { shape: 'star', col: C.arcane, speed: [4, 16], life: [0.2, 0.35], size: [0.8, 1.6], add: true },
+    hit(fx, x, y, S) { stars(fx, x, y, C.arcane, 12); fx.ring(x, y, 3, 20, 0.25, '#c8a0ff', 2); S.play('zap'); },
+  }),
+  bolt_arcane: SPELL({
+    head: { r: 8, col: 'rgba(160,96,255,0.9)' }, travel: 0.26,
+    trail: { shape: 'smoke', col: ['#7a4ae0', '#a07aff'], speed: [2, 10], life: [0.25, 0.45], size: [2, 3.5], grow: 1.6, alpha: 0.6 },
+    hit(fx, x, y, S) {
+      fx.glow(x, y, 26, 0.35, 'rgba(176,122,255,1)');
+      fx.ring(x, y, 4, 34, 0.35, '#b07aff', 3);
+      sparks(fx, x, y, C.arcane, 18);
+      S.play('arcane');
+    },
+  }),
+  firebolt: SPELL({
+    cast: 'firecast', glow: 'rgba(255,150,60,0.9)', head: { r: 7, col: 'rgba(255,130,40,0.9)', core: '#fff6c0' },
+    trail: { col: C.fire, speed: [5, 25], life: [0.2, 0.4], size: [1.5, 3], add: true, g: -60 },
+    hit(fx, x, y, S) {
+      fx.glow(x, y, 24, 0.35, 'rgba(255,150,50,1)');
+      fx.burst(x, y, { n: 22, speed: [40, 140], life: [0.35, 0.7], size: [2, 3.5], col: C.fire, add: true, drag: 2.5 });
+      embers(fx, x, y, C.fire, 12);
+      S.play('firebolt');
+    },
+  }),
+  frost: SPELL({
+    cast: 'icecast', glow: 'rgba(140,220,255,0.9)', img: true, point: Math.PI / 4, scale: 0.9, travel: 0.24,
+    trail: { shape: 'shard', col: C.ice, speed: [4, 16], life: [0.2, 0.4], size: [1, 2], add: true },
+    hit(fx, x, y, S) {
+      fx.burst(x, y, { n: 18, speed: [60, 170], life: [0.4, 0.8], size: [2, 3.5], shape: 'shard', col: C.ice, add: true, drag: 2, spin: 2 });
+      fx.ring(x, y, 4, 30, 0.35, '#bfefff', 2);
+      puff(fx, x, y, ['#e8fbff', '#c8f0ff'], 6, [3, 6]);
+      S.play('frost');
+    },
+  }),
+  toxic: SPELL({
+    cast: 'toxcast', glow: 'rgba(120,230,90,0.9)', travel: 0.42, arc: 26, ease: k => 1 - (1 - k) * (1 - k),
+    head: { r: 6, col: 'rgba(110,220,80,0.7)' },
+    trail: { shape: 'smoke', col: ['#5ac03a', '#3a8a2a', '#8ae05a'], speed: [2, 12], life: [0.4, 0.7], size: [3, 5], grow: 1.8, alpha: 0.55 },
+    hit(fx, x, y, S) {
+      fx.burst(x, y, { n: 16, speed: [15, 60], life: [0.8, 1.4], size: [5, 9], grow: 1.9, shape: 'smoke', col: ['#5ac03a', '#3a8a2a'], alpha: 0.6, g: -15, drag: 1.5 });
+      fx.burst(x, y, { n: 14, speed: [10, 50], life: [0.7, 1.2], size: [1.5, 3], shape: 'bubble', col: C.poison, g: -60, jx: 16, jy: 10 });
+      S.play('toxic');
+    },
+  }),
+  chain: SPELL({
+    cast: 'thunder', glow: 'rgba(255,240,120,0.95)', travel: 0.08,
+    launch(fx, a, b, S) {
+      fx.bolt(a[0], a[1], b[0], b[1], 0.35, '#fff6a0', 3);
+      fx.bolt(a[0], a[1], b[0] + R(-14, 14), b[1] + R(-10, 10), 0.3, '#8ad8ff', 2);
+    },
+    hit(fx, x, y, S, I) {
+      fx.flash('#fff6c0', 0.12, 0.35);
+      for (let i = 0; i < 4; i++) fx.bolt(x, y, x + R(-60, 60), y + R(-40, 40), 0.25, i % 2 ? '#8ad8ff' : '#fff6a0', 1.5);
+      sparks(fx, x, y, ['#ffffff', '#fff6a0', '#8ad8ff'], 22, [100, 260]);
+      S.shake(0.6);
+    },
+  }),
+  fireball: SPELL({
+    cast: 'firecast', glow: 'rgba(255,150,60,0.9)', img: true, spin: 5, scale: 1.3, arc: 40, travel: 0.38,
+    head: { r: 12, col: 'rgba(255,120,30,0.7)', core: '#fff0a0' },
+    trail: { col: C.fire, speed: [10, 40], life: [0.3, 0.6], size: [2, 4], add: true, g: -50 },
+    hit(fx, x, y, S) {
+      fx.flash('#ffb060', 0.25, 0.45);
+      fx.glow(x, y, 44, 0.45, 'rgba(255,140,40,1)', 1.6);
+      fx.ring(x, y, 8, 70, 0.45, '#ff9a3a', 4);
+      fx.burst(x, y, { n: 40, speed: [60, 240], life: [0.4, 0.9], size: [2, 5], col: C.fire, add: true, drag: 2.5 });
+      fx.burst(x, y, { n: 14, speed: [30, 90], life: [0.8, 1.4], size: [5, 9], grow: 2, shape: 'smoke', col: C.smoke, g: -30, drag: 1.5, alpha: 0.6 });
+      embers(fx, x, y, C.fire, 20, 1.2);
+      S.shake(1.1); S.play('explode');
+    },
+  }),
+  missiles: SPELL({
+    travel: 0.36,
+    launch(fx, a, b, S, dur) {
+      for (let i = 0; i < 3; i++) {
+        fx.shot({ from: [a[0] + R(-6, 6), a[1] + R(-4, 4)], to: [b[0] + R(-12, 12), b[1] + R(-10, 10)], dur: dur - 0.1 + i * 0.05,
+                  arc: [-50, 40, 70][i], head: { r: 5, col: 'rgba(170,110,255,0.9)' },
+                  trail: { shape: 'star', col: C.arcane, speed: [2, 10], life: [0.2, 0.35], size: [0.8, 1.5], add: true }, rate: 70,
+                  onHit: (hx, hy) => { stars(fx, hx, hy, C.arcane, 6); fx.ring(hx, hy, 2, 14, 0.2, '#c8a0ff', 2); } });
+      }
+    },
+    hit(fx, x, y, S) { S.play('missiles'); },
+  }),
+  drain: SPELL({
+    cast: 'drain', glow: 'rgba(255,60,100,0.9)', head: { r: 6, col: 'rgba(160,30,90,0.9)' },
+    trail: { shape: 'smoke', col: ['#5a1a4a', '#a0306a'], speed: [2, 10], life: [0.3, 0.5], size: [2, 3.5], grow: 1.5, alpha: 0.6 },
+    hit(fx, x, y, S, I) {
+      fx.ring(x, y, 36, 4, 0.35, '#ff5a7a', 2);
+      const to = I.hp || [x, y + 120];
+      for (let i = 0; i < 7; i++) {
+        fx.shot({ from: [x + R(-16, 16), y + R(-12, 12)], to: [to[0] + R(-6, 6), to[1] + R(-4, 4)], dur: 0.4 + i * 0.05, arc: R(-40, 40),
+                  head: { r: 4, col: 'rgba(255,40,80,0.9)', core: '#ffd0d8' },
+                  onHit: (hx, hy) => fx.burst(hx, hy, { n: 3, speed: [10, 40], life: [0.2, 0.4], shape: 'heart', col: C.blood, add: true }) });
+      }
+      S.play('drain');
+    },
+  }),
+  icelance: SPELL({
+    cast: 'icecast', glow: 'rgba(140,220,255,0.9)', img: true, point: Math.PI / 4, scale: 1.4, travel: 0.2, arc: 0, ease: k => k * k,
+    trail: { shape: 'shard', col: C.ice, speed: [10, 30], life: [0.25, 0.5], size: [1.5, 2.5], add: true }, rate: 120,
+    hit(fx, x, y, S) {
+      fx.flash('#c8f4ff', 0.15, 0.3);
+      fx.burst(x, y, { n: 30, speed: [80, 240], life: [0.4, 0.9], size: [2, 4.5], shape: 'shard', col: C.ice, add: true, drag: 2, spin: 2 });
+      fx.ring(x, y, 5, 46, 0.45, '#bfefff', 3);
+      puff(fx, x, y, ['#ffffff', '#c8f0ff'], 10, [4, 8]);
+      S.shake(0.7); S.play('icelance');
+    },
+  }),
+  meteor: SPELL({
+    cast: 'meteorcall', glow: 'rgba(255,150,60,0.9)', travel: 0.55,
+    launch(fx, a, b, S, dur) {
+      fx.shot({ from: [b[0] - 140, b[1] - 220], to: b, dur, arc: 0, img: S.icon, spin: 3, scale: 1.8, ease: k => k * k,
+                head: { r: 16, col: 'rgba(255,120,30,0.6)', core: '#fff0a0' },
+                trail: { col: C.fire, speed: [10, 50], life: [0.4, 0.8], size: [3, 6], add: true, g: -30 }, rate: 140 });
+    },
+    hit(fx, x, y, S) {
+      fx.flash('#ffc080', 0.4, 0.7);
+      fx.glow(x, y, 70, 0.6, 'rgba(255,140,40,1)', 1.7);
+      fx.ring(x, y, 10, 120, 0.6, '#ffb04a', 5);
+      fx.ring(x, y, 6, 70, 0.4, '#ffffff', 2);
+      fx.burst(x, y, { n: 60, speed: [80, 320], life: [0.5, 1.1], size: [2, 6], col: C.fire, add: true, drag: 2 });
+      fx.burst(x, y, { n: 20, speed: [120, 300], life: [0.6, 1.0], size: [3, 5], shape: 'shard', col: ['#3a2a24', '#6a4a3a'], g: 460 });
+      fx.burst(x, y, { n: 24, speed: [30, 110], life: [1.0, 1.8], size: [6, 12], grow: 2.2, shape: 'smoke', col: C.smoke, g: -30, drag: 1.4, alpha: 0.7 });
+      S.shake(2.2); S.play('meteor');
+    },
+  }),
+  void: SPELL({
+    cast: 'voidcast', glow: 'rgba(120,60,220,0.9)', head: { r: 7, col: 'rgba(60,20,120,0.9)', core: '#c89aff' },
+    trail: { shape: 'smoke', col: ['#2a1a4a', '#5a2a9a'], speed: [2, 10], life: [0.3, 0.6], size: [2, 4], grow: 1.6, alpha: 0.7 },
+    hit(fx, x, y, S, I) {
+      fx.ring(x, y, 70, 3, 0.55, '#8a5ad8', 4);
+      fx.ring(x, y, 45, 2, 0.4, '#ffffff', 2);
+      for (let i = 0; i < 24; i++) {
+        const a = R(0, TAU), r = R(40, 80);
+        fx.shot({ from: [x + Math.cos(a) * r, y + Math.sin(a) * r * 0.7], to: [x, y], dur: R(0.25, 0.5), arc: R(-20, 20),
+                  head: { r: 2.5, col: 'rgba(170,110,255,0.9)' } });
+      }
+      fx.glow(x, y, 18, 0.6, 'rgba(20,0,40,1)', 0.4);
+      if (I.execute) fx.flash('#3a0a6a', 0.4, 0.5);
+      S.play('void');
+    },
+  }),
+  starfall: SPELL({
+    cast: 'starcall', glow: 'rgba(255,220,120,0.9)', travel: 0.5,
+    launch(fx, a, b, S, dur) {
+      for (let i = 0; i < 5; i++) {
+        const sx = b[0] + R(-120, 60), sy = b[1] - R(160, 240);
+        fx.shot({ from: [sx, sy], to: [b[0] + R(-22, 22), b[1] + R(-14, 14)], dur: dur - 0.2 + i * 0.07, arc: 0, ease: k => k * k,
+                  head: { r: 6, col: 'rgba(255,220,90,0.9)', core: '#ffffff' },
+                  trail: { shape: 'star', col: C.gold, speed: [2, 12], life: [0.25, 0.5], size: [1, 2], add: true }, rate: 90,
+                  onHit: (hx, hy) => { stars(fx, hx, hy, C.gold, 10); fx.glow(hx, hy, 16, 0.3, 'rgba(255,230,120,1)'); } });
+      }
+    },
+    hit(fx, x, y, S) { fx.flash('#fff0b0', 0.2, 0.3); S.shake(0.9); S.play('starfall'); },
+  }),
+  prism: SPELL({
+    cast: 'prism', glow: 'rgba(255,255,255,0.95)', travel: 0.12,
+    launch(fx, a, b, S) {
+      fx.beam(a[0], a[1], b[0], b[1], 0.45, '#ffffff', 5);
+      C.rainbow.forEach((col, i) => fx.beam(a[0] + (i - 2.5) * 2, a[1], b[0] + (i - 2.5) * 5, b[1] + (i - 2.5) * 3, 0.5, col, 2.5));
+    },
+    hit(fx, x, y, S, I) {
+      fx.flash('#ffffff', 0.15, 0.4);
+      fx.burst(x, y, { n: 40, speed: [60, 220], life: [0.5, 1.0], size: [1.5, 3], shape: 'star', col: C.rainbow, add: true, drag: 2 });
+      fx.ring(x, y, 5, 50, 0.45, '#ffffff', 3);
+      if (I.beam) for (let i = 0; i < 6; i++) fx.beam(x, y, x + Math.cos(i * 1.05) * 90, y + Math.sin(i * 1.05) * 60, 0.35, C.rainbow[i], 2);
+      S.shake(0.8);
+    },
+  }),
+});
+
 // ---------------------------------------------------------------- status / event effects
 export const EVENTS = {
   miss(fx, x, y, S) { fx.burst(x, y, { n: 8, speed: [120, 200], life: [0.15, 0.25], shape: 'spark', col: '#c8c8d8', dir: 0, spread: 0.2, add: true, len: 0.06 }); S.play('miss'); },
@@ -672,6 +879,21 @@ export const EVENTS = {
   crit(fx, x, y, S) { fx.ring(x, y, 4, 40, 0.3, '#ffea4a', 3); stars(fx, x, y, ['#ffea4a', '#ffffff'], 10); fx.flash('#ffffff', 0.12, 0.3); },
   burnTick(fx, x, y, S) { fx.burst(x, y, { n: 16, speed: [20, 60], life: [0.5, 0.9], size: [2, 3.5], col: C.fire, add: true, g: -120, jx: 16, jy: 12 }); S.play('burn'); },
   poisonTick(fx, x, y, S) { fx.burst(x, y, { n: 14, speed: [10, 40], life: [0.6, 1.0], size: [1.5, 3], shape: 'bubble', col: C.poison, g: -60, jx: 18, jy: 12 }); S.play('poison'); },
+  chill(fx, x, y, S) { fx.burst(x, y, { n: 12, speed: [10, 40], life: [0.6, 1.0], size: [1.5, 3], shape: 'shard', col: C.ice, add: true, g: 40, jx: 18, jy: 10 }); },
+  chainStrike(fx, x, y, S) {
+    fx.bolt(x + R(-40, 40), y - 140, x + R(-8, 8), y, 0.3, '#fff6a0', 3);
+    sparks(fx, x, y, ['#ffffff', '#fff6a0', '#8ad8ff'], 14, [80, 200]);
+    fx.flash('#fff6c0', 0.08, 0.25);
+    S.play('thunder');
+  },
+  echo(fx, x, y, S) { fx.ring(x, y, 4, 34, 0.45, '#c8a0ff', 3); fx.ring(x, y, 4, 22, 0.35, '#ffffff', 2); stars(fx, x, y, C.arcane, 10); S.play('echo'); },
+  // the Rogue's forest reels bursting into being: whirling leaves, motes of green light
+  summon(fx, x, y, S) {
+    fx.glow(x, y, 40, 0.5, 'rgba(120,230,110,0.9)', 1.6);
+    fx.ring(x, y, 6, 60, 0.5, '#8ae05a', 3);
+    fx.burst(x, y, { n: 26, speed: [60, 200], life: [0.7, 1.3], size: [2.5, 4], shape: 'leaf', col: ['#3f8a36', '#62ae46', '#8ad85a', '#2a6a2c'], g: 120, spin: 3, drag: 1.5 });
+    stars(fx, x, y, ['#d8ffb0', '#ffffff', '#6aff8a'], 12, 30);
+  },
   stun(fx, x, y, S) { for (let i = 0; i < 6; i++) fx.burst(x + Math.cos(i * 1.05) * 20, y + Math.sin(i * 1.05) * 6, { n: 1, speed: [0, 2], life: [1.0, 1.3], size: [2.5, 3], shape: 'star', col: '#ffe070', add: true }); S.play('stun'); },
   kill(fx, x, y, S) {
     fx.flash('#ffffff', 0.18, 0.35);
