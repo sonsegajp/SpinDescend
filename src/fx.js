@@ -916,6 +916,12 @@ export const EVENTS = {
   burnTick(fx, x, y, S) { fx.burst(x, y, { n: 16, speed: [20, 60], life: [0.5, 0.9], size: [2, 3.5], col: C.fire, add: true, g: -120, jx: 16, jy: 12 }); S.play('burn'); },
   poisonTick(fx, x, y, S) { fx.burst(x, y, { n: 14, speed: [10, 40], life: [0.6, 1.0], size: [1.5, 3], shape: 'bubble', col: C.poison, g: -60, jx: 18, jy: 12 }); S.play('poison'); },
   chill(fx, x, y, S) { fx.burst(x, y, { n: 12, speed: [10, 40], life: [0.6, 1.0], size: [1.5, 3], shape: 'shard', col: C.ice, add: true, g: 40, jx: 18, jy: 10 }); },
+  bossCast(fx, x, y, S) {
+    fx.ring(x, y, 10, 120, 0.6, '#ff6a4a', 4);
+    fx.ring(x, y, 6, 80, 0.45, '#ffffff', 2);
+    fx.burst(x, y, { n: 30, speed: [80, 240], life: [0.5, 1.0], size: [2, 4], shape: 'shard', col: ['#ff8a5a', '#ffd08a', '#ffffff'], add: true, drag: 2 });
+    fx.flash('#ff4a2a', 0.2, 0.25);
+  },
   mirror(fx, x, y, S) {
     fx.burst(x, y, { n: 14, speed: [50, 150], life: [0.35, 0.7], size: [2, 3.5], shape: 'shard', col: ['#ffffff', '#d8ecff', '#9ab4d0'], add: true, drag: 2, spin: 2 });
     fx.ring(x, y, 4, 30, 0.35, '#d8ecff', 2);

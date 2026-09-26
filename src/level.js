@@ -3,9 +3,9 @@
 //
 // Grid: cell (x, y) is centred at world (x*CELL, 0, y*CELL); y grows toward +Z.
 // Directions: 0 = north (-Z), 1 = east (+X), 2 = south (+Z), 3 = west (-X).
-import { rng, trs } from './math.js?v=20260926000112';
-import { Batcher } from './gl.js?v=20260926000112';
-import { BIOMES, ELITES, biomeForFloor, LAST_FLOOR } from './data.js?v=20260926000112';
+import { rng, trs } from './math.js?v=20260926000506';
+import { Batcher } from './gl.js?v=20260926000506';
+import { BIOMES, ELITES, BOSSES, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926000506';
 
 export const CELL = 2.0;
 export const WALL_H = 2.6;
@@ -16,10 +16,12 @@ export const DY = [-1, 0, 1, 0];
 // Branching corridor mazes: every decision happens at a junction, where the
 // player is prompted Left / Forward / Right / Back (Doom RPG style).
 export function generate(floor, seed, opts = {}) {
+  const biome = opts.biome || biomeForFloor(floor);
+  if (isBossFloor(floor) && opts.bossReady) return generateBossHall(floor, seed, biome);   // once its boss model exists
   const R = rng(seed);
-  const biome = biomeForFloor(floor);
-  const tier = (floor - 1) % 2 + (floor > 6 ? 1 : 0);      // floors grow as you descend
-  const W = 15 + tier * 2, H = W;                       // odd sizes: nodes sit on odd coordinates
+  const lvl = levelOf(floor), act = Math.floor((floor - 1) / 4);
+  const tier = lvl - 1 + (act >= 2 ? 1 : 0);             // floors grow through a biome and deeper into the run
+  const W = 13 + tier * 2, H = W;                       // odd sizes: nodes sit on odd coordinates
   const g = new Uint8Array(W * H);
   const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : g[y * W + x];
   const set = (x, y, v) => { if (x > 0 && y > 0 && x < W - 1 && y < H - 1) g[y * W + x] = v; };
@@ -92,8 +94,8 @@ export function generate(floor, seed, opts = {}) {
   const entities = [];
   const B = BIOMES[biome];
 
-  // elite guarding the stairs on the last floor of each biome
-  if (floor >= LAST_FLOOR || biomeForFloor(floor + 1) !== biome) {
+  // an elite guards the stairs down to the boss hall (and the last level, while a biome has no boss yet)
+  if (lvl >= 3) {
     let guard = null;
     for (const d of exits(stairs.x, stairs.y)) {
       const nx = stairs.x + DX[d], ny = stairs.y + DY[d];
@@ -146,14 +148,14 @@ export function generate(floor, seed, opts = {}) {
 
   // chests live in dead ends
   const deadEnds = deadEndsAll.filter(([x, y]) => !occupied.has(key(x, y)) && dist[y * W + x] >= 3);
-  const nChests = Math.min(deadEnds.length, 1 + (R.chance(0.6) ? 1 : 0) + (floor >= 4 && R.chance(0.4) ? 1 : 0));
+  const nChests = Math.min(deadEnds.length, 1 + (R.chance(0.6) ? 1 : 0) + (floor >= 4 && R.chance(0.4) ? 1 : 0) + (biome === 'vault' ? 1 : 0));
   for (let i = 0; i < nChests; i++) {
     const [x, y] = deadEnds.splice(Math.floor(R() * deadEnds.length), 1)[0];
     occupied.add(key(x, y));
-    entities.push({ type: 'chest', x, y, face: faceOpen(x, y), mimic: floor > 1 && R.chance(0.25 * (opts.mimics || 1)) });
+    entities.push({ type: 'chest', x, y, face: faceOpen(x, y), mimic: floor > 1 && R.chance(0.25 * (opts.mimics || 1) * (biome === 'vault' ? 1.6 : 1)) });
   }
   // enemies block corridors
-  const nEnemies = Math.min(3 + floor, 9) + (opts.extraFoes || 0);
+  const nEnemies = Math.min(3 + lvl + act, 9) + (opts.extraFoes || 0);
   const cand = cells.filter(([x, y]) => dist[y * W + x] >= 3 && exits(x, y).length === 2);
   let placed = 0;
   for (let t = 0; t < 400 && placed < nEnemies && cand.length; t++) {
@@ -165,6 +167,30 @@ export function generate(floor, seed, opts = {}) {
     placed++;
   }
   return { floor, biome, W, H, grid: g, at, exits, start, stairs, entities, dist, occupied, seed };
+}
+
+// The boss hall: a corridor opening into a long pillared hall, the boss waiting at its far end with the
+// stairs behind it. The hall is built wide, but you walk its centre line straight at the boss (no prompts).
+function generateBossHall(floor, seed, biome) {
+  const W = 15, H = 17;
+  const g = new Uint8Array(W * H), nav = new Uint8Array(W * H);
+  const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : g[y * W + x];
+  const navAt = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : nav[y * W + x];
+  const cx = 7;
+  for (let y = 12; y <= 15; y++) { g[y * W + cx] = 1; nav[y * W + cx] = 1; }          // the approach
+  for (let y = 2; y <= 11; y++) for (let x = cx - 3; x <= cx + 3; x++) g[y * W + x] = 1;   // the hall
+  for (let y = 1; y <= 11; y++) nav[y * W + cx] = 1;                                     // its centre aisle
+  g[1 * W + cx] = 1;                                                                     // the stairs alcove
+  const exits = (x, y) => [0, 1, 2, 3].filter(d => navAt(x + DX[d], y + DY[d]));
+  const dist = new Int32Array(W * H).fill(-1);
+  for (let y = 1; y <= 15; y++) dist[y * W + cx] = 15 - y;
+  const start = { x: cx, y: 15, dir: 0 };
+  const stairs = { x: cx, y: 1 };
+  const B = BOSSES[biome];
+  const entities = [{ type: 'enemy', kind: B.kind, boss: true, x: cx, y: 3 }];
+  const occupied = new Set([`${cx},15`, `${cx},1`, `${cx},3`]);
+  return { floor, biome, W, H, grid: g, at, exits, start, stairs, entities, dist, occupied, seed, boss: true,
+           hall: { x0: cx - 3, x1: cx + 3, y0: 2, y1: 11 } };
 }
 
 // ------------------------------------------------------------------ building
@@ -193,6 +219,10 @@ export function build(level, models) {
     magma: { walls: ['magma_wall0', 'magma_wall0', 'magma_wall1', 'magma_wall2'], floors: ['magma_floor0', 'magma_floor0', 'magma_floor1'],
              ceil: 'magma_ceil', spin: true },
     ruins: { walls: ['ruin_wall0', 'ruin_wall1', 'ruin_wall2'], floors: ['ruin_floor0', 'ruin_floor1'] },
+    grotto: { walls: ['grotto_wall0', 'grotto_wall0', 'grotto_wall1', 'grotto_wall2'], floors: ['grotto_floor0', 'grotto_floor0', 'grotto_floor1'],
+              ceil: 'grotto_ceil', spin: true },
+    vault: { walls: ['vault_wall0', 'vault_wall0', 'vault_wall1', 'vault_wall2', 'vault_wall2'], floors: ['vault_floor0', 'vault_floor0', 'vault_floor1'],
+             ceil: 'vault_ceil', pillar: 'vault_pillar' },
   }[biome];
   const walls = KIT.walls, floors = KIT.floors;
   // corner props: the model's corner is its origin with the room toward model +x/+y
@@ -379,6 +409,51 @@ export function build(level, models) {
           put('chains', cx + DX[d] * 0.62, 0, cz + DY[d] * 0.62, R() * 6);
         }
         if (!busy && R.chance(0.05)) put('bones', cx + (R() - 0.5) * 0.9, 0, cz + (R() - 0.5) * 0.9, R() * 6);
+      }
+    }
+  }
+  // ---- the grotto's glowing mushrooms and roots, the vault's gold and chandeliers
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (!at(x, y) || (biome !== 'grotto' && biome !== 'vault')) continue;
+      const [cx, , cz] = cellPos(x, y);
+      const busy = blocked.has(`${x},${y}`) || (x === level.stairs.x && y === level.stairs.y);
+      const wallDirs = [0, 1, 2, 3].filter(d => !at(x + DX[d], y + DY[d]));
+      const corners = [];
+      for (let i = 0; i < wallDirs.length; i++) for (let j = i + 1; j < wallDirs.length; j++)
+        if ((wallDirs[i] + wallDirs[j]) % 2 === 1) corners.push([wallDirs[i], wallDirs[j]]);
+      const lit = (x * 7 + y * 13) % 4 === 0;
+      if (biome === 'grotto') {
+        if (!busy && (corners.length || wallDirs.length) && (lit || R.chance(0.18))) {
+          let px, pz;
+          if (corners.length) { const [d1, d2] = R.pick(corners); px = cx + (DX[d1] + DX[d2]) * 0.58; pz = cz + (DY[d1] + DY[d2]) * 0.58; }
+          else { const d = R.pick(wallDirs); px = cx + DX[d] * 0.7; pz = cz + DY[d] * 0.7; }
+          put('shrooms', px, 0, pz, R() * 6, 0.5 + R() * 0.35);
+          if (lit) lights.push({ pos: [px, 0.7, pz], col: R.chance(0.5) ? [0.3, 1.1, 0.95] : [0.8, 0.45, 1.2], radius: 4.4, flicker: 0 });
+        }
+        if (R.chance(0.22)) put('roots', cx + (R() - 0.5) * 0.6, 0, cz + (R() - 0.5) * 0.6, R() * 6);
+      }
+      if (biome === 'vault') {
+        if (!busy && corners.length && R.chance(0.3)) {
+          const [d1, d2] = R.pick(corners);
+          put('coin_pile', cx + (DX[d1] + DX[d2]) * 0.55, 0, cz + (DY[d1] + DY[d2]) * 0.55, R() * 6, 0.8 + R() * 0.4);
+        }
+        if (lit && !busy) {
+          put('chandelier', cx, 0, cz, R() * 6);
+          lights.push({ pos: [cx, 2.1, cz], col: B.torch, radius: B.torchRadius, flicker: R() * 10 });
+        }
+      }
+    }
+  }
+  // ---- the boss hall: braziers down both sides, the stairs lit behind the boss
+  if (level.hall) {
+    const { x0, x1, y0, y1 } = level.hall;
+    for (let y = y0 + 1; y <= y1 - 1; y += 3) {
+      for (const x of [x0, x1]) {
+        const [px, , pz] = cellPos(x, y);
+        const ox = (x === x0 ? -1 : 1) * 0.55;
+        put('brazier', px + ox, 0, pz, R() * 6);
+        lights.push({ pos: [px + ox, 1.1, pz], col: [2.0, 1.1, 0.5], radius: 6.5, flicker: R() * 10 });
       }
     }
   }

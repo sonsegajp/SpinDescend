@@ -1,17 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926000112';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926000112';
-import { Renderer, invert } from './render.js?v=20260926000112';
-import { SlotMachine } from './slot.js?v=20260926000112';
-import { CardView } from './cards.js?v=20260926000112';
-import { UI, SERIF } from './ui.js?v=20260926000112';
-import { Animator } from './anim.js?v=20260926000112';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926000112';
-import { is } from './input.js?v=20260926000112';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260926000112';
+import { gl } from './gl.js?v=20260926000506';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926000506';
+const BOSS_SCALE = 2.1;
+import { Renderer, invert } from './render.js?v=20260926000506';
+import { SlotMachine } from './slot.js?v=20260926000506';
+import { CardView } from './cards.js?v=20260926000506';
+import { UI, SERIF } from './ui.js?v=20260926000506';
+import { Animator } from './anim.js?v=20260926000506';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926000506';
+import { is } from './input.js?v=20260926000506';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260926000506';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926000112';
+         BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926000506';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -75,6 +77,7 @@ export class Game {
       if (this.a.anims[this.viewModel]) this.titleKnight = this.makeAnimator(this.viewModel);
     }
     if (q.get('seed')) this.fixedSeed = parseInt(q.get('seed'), 10);
+    if (q.get('route')) this.fixedRoute = q.get('route').split(',').filter(b => BIOMES[b]);      // ?route=dungeon,grotto,vault,magma
     if (q.has('title')) return;
     this.newRun();
     this.fade = null;
@@ -83,7 +86,7 @@ export class Game {
     if (f > 1) {
       this.loadFloor(f, this.runSeed + f * 7919);
       this.ui.toasts = [];
-      this.ui.toast(`Floor ${f} - The ${BIOMES[biomeForFloor(f)].name}`, this.time, '#e8c878', 2.6);
+      this.ui.toast(this.floorName(f), this.time, '#e8c878', 2.6);
     }
     if (q.get('face')) { this.dir = parseInt(q.get('face'), 10) & 3; this.cam.yaw = dirYaw(this.dir); }
     if (q.has('map')) this.showMap = true;
@@ -190,6 +193,8 @@ export class Game {
                     kills: 0, cards: 0, might: 0, guard: K.guard || 0, fortune: 0, luck: K.luck || 0, blast: 0, venom: 0,
                     lifesteal: 0, casts: 0 };
     this.runSeed = this.fixedSeed ?? ((Math.random() * 1e9) | 0);
+    this.route = this.fixedRoute && this.fixedRoute.length ? [...this.fixedRoute, ...makeRoute(rng(this.runSeed))].slice(0, 4)
+      : makeRoute(rng(this.runSeed));
     this.slot.state.hp = K.hp; this.slot.state.maxHp = K.hp; this.slot.state.gold = 0;
     this.slot.summonPods(false);
     this.slot.setTheme({ mage: 'arcane', knight: 'knight', rogue: 'forest' }[this.cls] || 'classic');
@@ -204,9 +209,19 @@ export class Game {
     this.state = 'omen';
   }
 
+  // a biome's boss hall opens once its boss model ships (until then level 4 is a normal level)
+  bossReady(biome) { return !!(BOSSES[biome] && this.a.models[BOSSES[biome].kind]); }
+  bossFloor(f) { return isBossFloor(f) && this.bossReady(biomeForFloor(f, this.route)); }
+
+  // "The Mines - Level 2", "The Mines - its master waits"
+  floorName(f) {
+    const b = BIOMES[biomeForFloor(f, this.route)].name;
+    return this.bossFloor(f) ? `The ${b} - its master waits` : `The ${b} - Level ${levelOf(f)}`;
+  }
+
   enterFloorOne() {
     this.state = 'explore';
-    this.ui.toast('Floor 1 - The Dungeon', this.time, '#e8c878', 2.6);
+    this.ui.toast(this.floorName(1), this.time, '#e8c878', 2.6);
     this.ui.toast('A goblin merchant trades on the way to the stairs', this.time, '#ffd24a', 3.2);
   }
 
@@ -266,7 +281,9 @@ export class Game {
   loadFloor(floor, seed, title = false) {
     this.floor = floor;
     const om = this.player && this.player.omen;
-    this.level = generate(floor, seed, { mimics: om === 'hoard' ? 2 : 1, extraFoes: om === 'swarm' ? 2 : 0 });
+    const biomeKey = biomeForFloor(floor, title ? undefined : this.route);
+    this.level = generate(floor, seed, { biome: biomeKey, mimics: om === 'hoard' ? 2 : 1, extraFoes: om === 'swarm' ? 2 : 0,
+                                         bossReady: this.bossReady(biomeKey) });
     this.biome = BIOMES[this.level.biome];
     const built = build(this.level, this.a.models);
     this.static = built.batches;
@@ -288,12 +305,16 @@ export class Game {
 
   spawn(e) {
     if (e.type === 'enemy') {
-      const def = ENEMIES[e.kind];
-      const mult = 1 + (this.floor - 1) * 0.125;           // 12 floors: peaks where the old 9-floor run did
+      let def = ENEMIES[e.kind];
+      if (e.boss) {
+        const B = BOSSES[this.level.biome];
+        def = { ...B, model: this.a.models[B.kind] ? B.kind : 'goblin', boss: true };
+      }
+      const mult = 1 + (this.floor - 1) * 0.1;             // 16 floors: 4 biomes x 4 levels
       const hp = Math.round(def.hp * mult * (e.elite ? 1.7 : 1));
-      const ent = { ...e, def, hp, maxHp: hp, atk: def.atk + Math.floor((this.floor - 1) / 4) + (e.elite ? 1 : 0),
-               poison: 0, burn: 0, stunTurns: 0, alive: true, flash: 0, advance: 0, turn: 0, fadeOut: 0,
-               phase: Math.random() * 6, scale: ENEMY_SCALE * (e.elite ? 1.3 : 1) };
+      const ent = { ...e, def, hp, maxHp: hp, atk: def.atk + Math.floor((this.floor - 1) / 5) + (e.elite ? 1 : 0),
+               poison: 0, burn: 0, stunTurns: 0, alive: true, flash: 0, advance: 0, turn: 0, fadeOut: 0, shell: 0,
+               phase: Math.random() * 6, scale: ENEMY_SCALE * (e.boss ? BOSS_SCALE : e.elite ? 1.3 : 1) };
       ent.animator = this.makeAnimator(def.model);
       return ent;
     }
@@ -489,6 +510,8 @@ export class Game {
   }
 
   autoStep() {
+    const far = this.entityAt(this.px + 2 * DX[this.dir], this.py + 2 * DY[this.dir]);
+    if (far && far.boss && far.alive) { this.startCombat(far); return; }
     const ahead = this.entityAt(this.px + DX[this.dir], this.py + DY[this.dir]);
     const aheadOpen = this.level.at(this.px + DX[this.dir], this.py + DY[this.dir]);
     if (ahead && aheadOpen) {
@@ -644,12 +667,20 @@ export class Game {
     e.engaged = true;
     this.anim(e, 'walk', { then: null });
     this.later(0.55, () => { if (e.alive && e.animator && e.animator.name === 'walk') this.anim(e, 'idle', { fade: 0.2 }); });
-    this.combat = { e, phase: 'intro', t0: this.time, loot: 0, freeSpin: false, tempBag: [], turn: 0, rewards: [] };
+    this.combat = { e, phase: 'intro', t0: this.time, loot: 0, freeSpin: false, tempBag: [], turn: 0, rewards: [], locked: [] };
     this.state = 'combat';
     const def = e.def;
-    this.ui.toast(`${e.elite ? 'Elite ' : ''}${def.name} attacks!`, this.time, '#ff8a6a');
+    if (e.boss) {
+      this.combat.phase = 'intro';
+      this.combat.t0 = this.time + 1.4;                          // a longer beat for the entrance
+      this.banner(def.name.toUpperCase(), def.title, '#ff6a4a', 2.6);
+      this.audio.play('bossroar');
+      this.anim(e, 'roar', { then: 'idle' });
+      this.slot.shake = 1.2; this.camShake = 1.2;
+      this.later(1.2, () => this.warnAbility());
+    } else this.ui.toast(`${e.elite ? 'Elite ' : ''}${def.name} attacks!`, this.time, '#ff8a6a');
     this.audio.voice(e.kind, 'intro');
-    if (def.note) this.later(0.9, () => this.ui.toast(def.note, this.time, '#c8b8a8'));
+    if (def.note && !e.boss) this.later(0.9, () => this.ui.toast(def.note, this.time, '#c8b8a8'));
     this.player.armor = 0;
     this.slot.state.spinEnabled = true;
     this.slot.state.spinLabel = 'SPIN';
@@ -679,8 +710,28 @@ export class Game {
     return bag[Math.floor(Math.random() * bag.length)];
   }
 
+  // burn and spores bite at the start of each spin
+  playerDots() {
+    const P = this.player, [hx, hy] = this.slot.hpAnchor();
+    if (P.burnT > 0) {
+      P.hp -= 2; P.burnT--;
+      this.ui.float('-2 burning', hx, hy - 30, '#ff8a3a', this.time, { size: 13 });
+      this.fxEvent('burnTick', hx, hy);
+    }
+    if (P.spores > 0) {
+      P.hp -= P.spores;
+      this.ui.float(`-${P.spores} spores`, hx, hy - 44, '#8aff6a', this.time, { size: 13 });
+      this.fxEvent('poisonTick', hx, hy);
+      P.spores--;
+    }
+    this.slot.state.hp = P.hp;
+    if (P.hp <= 0 && !this.rescue()) { this.playerDies(); return false; }
+    return true;
+  }
+
   spinReels() {
     const C = this.combat;
+    if (!this.playerDots()) return;
     C.phase = 'spinning';
     C.turn++;
     const P = this.player;
@@ -753,7 +804,16 @@ export class Game {
       this.audio.play('luck');
     }
     for (const b of this.findBonuses(C.grid).sort((a, b) => hits(a) - hits(b))) C.queue.push(b);
-    for (let row = 0; row < 2; row++) for (let reel = 0; reel < C.grid[row].length; reel++) C.queue.push([row, reel]);
+    for (let row = 0; row < 2; row++) for (let reel = 0; reel < C.grid[row].length; reel++) {
+      if (C.locked.includes(reel)) continue;                         // stunned or frozen by the boss
+      C.queue.push([row, reel]);
+    }
+    if (C.locked.length) {
+      for (const r of C.locked) {
+        const [x, y] = this.slot.reelAnchor(r, 0);
+        this.ui.float(this.slot.lockKind === 'ice' ? 'Frozen!' : 'Stunned!', x, y - 10, this.slot.lockKind === 'ice' ? '#a8e8ff' : '#ffb07a', this.time, { size: 14 });
+      }
+    }
     C.nextAt = this.time + (C.queue.length > 6 ? 0.35 : 0.15);
   }
 
@@ -1194,7 +1254,22 @@ export class Game {
 
   damageEnemy(dmg, crit) {
     const e = this.combat.e;
+    if (e.shell > 0 && dmg > 0) {                                    // a boss's ice or stone shell soaks it up first
+      const soak = Math.min(e.shell, dmg);
+      e.shell -= soak; dmg -= soak;
+      const [sx, sy] = this.enemyScreen(0.7);
+      this.ui.float(`Shell -${soak}`, sx - 30, sy, '#b8c8ff', this.time, { size: 12 });
+      this.fxEvent('block', sx, sy);
+      if (dmg <= 0) return;
+    }
     e.hp -= dmg;
+    if (e.boss && !e.enraged && e.hp > 0 && e.hp <= e.maxHp * 0.3) {
+      e.enraged = true;
+      e.atk = Math.ceil(e.atk * 1.5);
+      this.banner('ENRAGED!', `${e.def.name} hits half again as hard`, '#ff3a2a', 1.6);
+      this.audio.play('bossroar');
+      this.anim(e, 'roar', { then: 'idle' });
+    }
     e.flash = 1;
     if (e.hp > 0) this.anim(e, 'hit', { fade: 0.05 });
     if (e.hp > 0 && this.time - (e.hurtVoiceT || 0) > 0.6) { e.hurtVoiceT = this.time; this.audio.voice(e.kind, 'hurt'); }
@@ -1218,6 +1293,7 @@ export class Game {
   finishResolve() {
     const C = this.combat, e = C.e;
     this.slot.highlight(-1, -1);
+    C.locked = []; this.slot.locks = [];
     this.slot.summonPods(false);
     if (C.vials && C.dealt) this.heal(Math.min(3, C.vials * C.dealt), 0, 0);
     if (this.player.lifesteal && C.dealt) this.heal(this.player.lifesteal, 0, 0);
@@ -1264,10 +1340,71 @@ export class Game {
     this.anim(e, 'attack');
   }
 
+  // what the boss does on turn t: abilities on even turns, cycling; plain blows between
+  bossAbility(t) {
+    const ab = this.combat.e.def.abilities;
+    return t % 2 === 0 ? ab[(t / 2 - 1) % ab.length] : null;
+  }
+
+  warnAbility() {
+    const C = this.combat;
+    if (!C || !C.e.boss || !C.e.alive) return;
+    const k = this.bossAbility(C.turn + 1);
+    C.warn = k;
+    if (k) this.ui.toast(`${C.e.def.name} ${ABILITY[k].warn}`, this.time, ABILITY[k].col, 2.2);
+  }
+
+  bossStrike(k) {
+    const C = this.combat, e = C.e, P = this.player;
+    const A = ABILITY[k];
+    this.banner(A.name, '', A.col, 1.1);
+    this.fxEvent('bossCast', ...this.enemyScreen(0.6));
+    let dmg = e.atk, hits = 1;
+    switch (k) {
+      case 'slam': dmg *= 2; C.lockNext = { reels: [Math.floor(Math.random() * 3)], kind: 'stun' }; this.camShake = 1.6; this.audio.play('slam'); break;
+      case 'rally': e.atk += 2; e.hp = Math.min(e.maxHp, e.hp + 6); this.audio.play('horn'); dmg = 0; break;
+      case 'rebuild':
+        if (!e.rebuilt && e.hp < e.maxHp * 0.5) { e.rebuilt = true; e.hp = Math.min(e.maxHp, e.hp + Math.round(e.maxHp * 0.4)); dmg = 0; this.audio.voice('skeleton', 'intro'); }
+        break;
+      case 'curse': C.tempBag.push('skull', 'skull'); this.ui.toast('Two Curses join your reels for this fight', this.time, '#c86aff'); this.audio.play('curse'); dmg = Math.ceil(dmg / 2); break;
+      case 'drain': C.drain = true; this.audio.play('drain'); break;
+      case 'freeze': { const r = [0, 1, 2].sort(() => Math.random() - 0.5).slice(0, 2); C.lockNext = { reels: r, kind: 'ice' }; dmg = Math.ceil(dmg / 2); this.audio.play('frost'); break; }
+      case 'glacier': e.shell += 6; e.melt = true; dmg = 0; this.audio.play('icelance'); break;
+      case 'charge': dmg = Math.round(dmg * 2.5); this.camShake = 1.6; this.audio.play('heavy'); break;
+      case 'burn': P.burnT = 3; this.audio.play('fireball'); dmg = Math.ceil(dmg / 2); break;
+      case 'fortify': e.shell += 8; dmg = 0; this.audio.play('bulwark'); break;
+      case 'spores': P.spores = (P.spores || 0) + 2; this.audio.play('toxic'); dmg = Math.ceil(dmg / 2); break;
+      case 'regrow': e.hp = Math.min(e.maxHp, e.hp + 5); dmg = 0; this.audio.play('bigheal'); break;
+      case 'greed': {
+        const take = Math.min(P.gold, Math.max(5, Math.round(P.gold * 0.25)));
+        P.gold -= take; this.slot.state.gold = P.gold; e.atk += 1;
+        const [gx, gy] = this.slot.goldAnchor();
+        this.ui.float(`-${take} gold`, gx, gy - 14, '#ffd24a', this.time, { size: 15 });
+        this.audio.play('coinrain');
+        break;
+      }
+      case 'devour': hits = 2; this.audio.play('chomp'); break;
+    }
+    if (e.hp > 0) { const [x, y] = this.enemyScreen(0.9); if (k === 'rally' || k === 'regrow' || k === 'rebuild') this.ui.float('+HP', x, y, '#6aff7a', this.time, { size: 14 }); }
+    if (e.shell) { const [x, y] = this.enemyScreen(0.8); this.ui.float(`Shell ${e.shell}`, x + 30, y, '#b8c8ff', this.time, { size: 13 }); }
+    return { dmg, hits };
+  }
+
   enemyStrike() {
     const C = this.combat, e = C.e, P = this.player;
     C.phase = 'enemyEnd';
     C.nextAt = this.time + 0.45;
+    if (e.boss && !C.bonusStrike) {
+      const k = this.bossAbility(C.turn);
+      const r = k ? this.bossStrike(k) : { dmg: e.atk, hits: 1 };
+      for (let h = 0; h < r.hits; h++) this.later(h * 0.35, () => { if (this.combat === C && P.hp > 0) this.bossHit(r.dmg); });
+      if (e.melt && e.shell > 0) e.shell--;
+      C.locked = C.lockNext ? C.lockNext.reels : [];
+      this.slot.locks = C.locked; this.slot.lockKind = C.lockNext ? C.lockNext.kind : null;
+      C.lockNext = null;
+      this.later(0.9, () => this.warnAbility());
+      return;
+    }
     const bonus = C.bonusStrike;              // the free hit on a paralyzed player: no specials (they'd re-trigger
     C.bonusStrike = false;                    // on the same turn number - a scream would chain forever)
     let dmg = bonus ? Math.ceil(e.atk / 2) : e.atk;     // the paralysis hit is a lesser blow
@@ -1332,6 +1469,30 @@ export class Game {
     }
   }
 
+  bossHit(dmg) {
+    const C = this.combat, e = C.e, P = this.player;
+    this.audio.voice(e.kind, 'attack');
+    if (dmg <= 0) return;
+    const absorbed = Math.min(P.armor, dmg);
+    P.armor -= absorbed;
+    dmg -= absorbed;
+    const [hx, hy] = this.slot.hpAnchor();
+    if (absorbed) this.ui.float(`Blocked ${absorbed}`, hx, hy - 22, '#9ab8ff', this.time, { size: 13 });
+    if (dmg > 0) {
+      P.hp -= dmg;
+      this.slot.state.hp = P.hp;
+      this.ui.float(`-${dmg}`, hx, hy, '#ff4a4a', this.time, { size: 24 });
+      this.audio.play('hurt');
+      this.hurtFlash = this.time;
+      this.slot.shake = 1.2; this.camShake = Math.max(this.camShake || 0, 1.2);
+      if (C.drain) { e.hp = Math.min(e.maxHp, e.hp + dmg); const [x, y] = this.enemyScreen(0.9); this.ui.float(`+${dmg}`, x, y, '#6aff7a', this.time, { size: 14 }); }
+    } else this.audio.play('block');
+    C.drain = false;
+    if (C.thorns && e.alive) this.later(0.2, () => { if (this.combat === C && e.alive) { this.fxEvent('thorns', ...this.enemyScreen(0.55)); this.damageEnemy(C.thorns, false); } });
+    if (P.hp <= 5) this.rescue();
+    if (P.hp <= 0) this.playerDies();
+  }
+
   endEnemyTurn() {
     const C = this.combat;
     if (C.paralyzed) {                                       // frozen by a scream: the foe acts again
@@ -1368,13 +1529,19 @@ export class Game {
     const [lo, hi] = e.def.gold;
     const g = lo + Math.floor(Math.random() * (hi - lo + 1)) + Math.floor(this.floor / 2) + (e.elite ? 6 : 0) +
       (this.player.omen === 'swarm' ? 3 : 0);
+    this.player.burnT = 0; this.player.spores = 0;
+    if (e.boss) {
+      const P = this.player, heal = Math.round(P.maxHp * 0.3);
+      this.later(0.6, () => { this.heal(heal, 0, 0); this.ui.toast(`You catch your breath (+${heal} HP). The way down is open.`, this.time, '#8aff9a', 3); });
+    }
     const [x, y] = this.enemyScreen(0.5);
     this.gainGold(this.player.relics.has('midas_glove') ? Math.round(g * 1.5) : g, x, y);
     e.gone = true;
     this.combat = null;
     this.player.armor = 0;
     this.rewardQueue = [];
-    if (C.loot >= 2 || e.elite || e.kind === 'mimic') this.rewardQueue.push({ n: 3, source: e.elite ? 'boss' : 'loot' });
+    if (e.boss) this.rewardQueue.push({ n: 3, source: 'hoard_boss', min: 'rare', relics: true }, { n: 3, source: 'boss', min: 'rare' });
+    else if (C.loot >= 2 || e.elite || e.kind === 'mimic') this.rewardQueue.push({ n: 3, source: e.elite ? 'boss' : 'loot' });
     this.rewardQueue.push(...C.rewards);
     if (this.rewardQueue.length) this.nextReward();
     else {
@@ -1385,7 +1552,7 @@ export class Game {
 
   nextReward() {
     const r = this.rewardQueue.shift();
-    this.offerCards(r.n, r.source, r.min);
+    this.offerCards(r.n, r.source, r.min, r.relics);
   }
 
   playerDies() {
@@ -1413,8 +1580,9 @@ export class Game {
     }).map(([id]) => id);
   }
 
-  rollCards(n, bonus = 0, min = null) {
+  rollCards(n, bonus = 0, min = null, relics = false) {
     let pool = this.eligibleCards();
+    if (relics) { const rp = pool.filter(id => CARDS[id].type === 'passive' || CARDS[id].type === 'boost'); if (rp.length >= n) pool = rp; }
     if (min) {
       const order = Object.keys(RARITY);
       const better = pool.filter(id => order.indexOf(CARDS[id].rarity) >= order.indexOf(min));
@@ -1437,8 +1605,8 @@ export class Game {
     return out;
   }
 
-  offerCards(n, source, min) {
-    const ids = this.rollCards(n, (source === 'boss' ? 1.5 : 0) + (this.player.omen === 'frailty' ? 1.2 : 0), min);
+  offerCards(n, source, min, relics) {
+    const ids = this.rollCards(n, (source === 'boss' || source === 'hoard_boss' ? 1.5 : 0) + (this.player.omen === 'frailty' ? 1.2 : 0), min, relics);
     this.reward = { ids, source };
     this.cards.show(ids.map(id => ({ id })), this.time);
     this.cards.keyFocus = -1;
@@ -1622,8 +1790,8 @@ export class Game {
       const f = this.floor + 1;
       this.reachFloor(f);
       this.loadFloor(f, this.runSeed + f * 7919);
-      const b = BIOMES[biomeForFloor(f)];
-      this.ui.toast(`Floor ${f} - The ${b.name}`, this.time, '#e8c878', 2.6);
+      this.ui.toast(this.floorName(f), this.time, '#e8c878', 2.6);
+      if (levelOf(f) === 1 && f > 1) this.ui.toast(`A new land: The ${BIOMES[biomeForFloor(f, this.route)].name}`, this.time, '#8ad8ff', 3);
       if (this.entities.some(e => e.type === 'merchant')) this.ui.toast('A goblin merchant trades on the way to the stairs', this.time, '#ffd24a', 3.2);
       this.fadeIn();
     } };
@@ -1687,7 +1855,7 @@ export class Game {
 
   enemyWorld(e) {
     let x = e.x * CELL, z = e.y * CELL;
-    if (e.engaged) {
+    if (e.engaged && !e.boss) {
       // engaged enemies step up toward the player
       const dx = this.px * CELL - x, dz = this.py * CELL - z, l = Math.hypot(dx, dz) || 1;
       e.advance = lerp(e.advance, 0.2, 0.1);
@@ -1929,8 +2097,9 @@ export class Game {
       g.fillStyle = grd; g.fillRect(0, 0, W, H);
     }
 
+    if (this.combat && this.combat.e.alive && this.combat.e.boss) this.drawBossBar(now);
     // enemy nameplate + HP bar above its head (concept: red bar over the goblin)
-    if (this.combat && this.combat.e.alive) {
+    if (this.combat && this.combat.e.alive && !this.combat.e.boss) {
       const e = this.combat.e;
       const [x, y] = this.enemyScreen(1.08);
       const bw = 70;
@@ -1974,6 +2143,26 @@ export class Game {
     if (this.state === 'explore' && this.floor === 1 && this.player && this.player.kills === 0)
       U.text('Arrows / WASD or click: choose a path   SPACE confirm   TAB reels   M map   N sound   V crt', W / 2, 12, { size: 8, align: 'center', color: '#cfc2a8', alpha: 0.8, bold: false });
     this.drawFade();
+  }
+
+  drawBossBar(now) {
+    const U = this.ui, W = this.W, g = U.g, C = this.combat, e = C.e;
+    const bw = Math.min(360, W - 120), x = W / 2 - bw / 2, y = 44;
+    U.text(e.def.name.toUpperCase(), W / 2, y - 8, { size: 15, align: 'center', color: e.enraged ? '#ff5a3a' : '#ffd8b8', spacing: 2 });
+    g.fillStyle = '#0c0810'; g.fillRect(x - 3, y - 3, bw + 6, 16);
+    g.fillStyle = '#3a0c10'; g.fillRect(x, y, bw, 10);
+    const f = clamp(e.hp / e.maxHp, 0, 1);
+    g.fillStyle = e.enraged ? `rgba(255,${60 + 40 * Math.sin(now * 12)},40,1)` : '#c8202a'; g.fillRect(x, y, bw * f, 10);
+    g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(x, y, bw * f, 3);
+    if (e.shell > 0) { g.fillStyle = 'rgba(160,190,255,0.85)'; g.fillRect(x, y + 7, Math.min(bw, bw * e.shell / e.maxHp * 2), 3); }
+    U.text(`${Math.max(0, e.hp)} / ${e.maxHp}${e.shell ? `   shell ${e.shell}` : ''}`, W / 2, y + 22, { size: 9, align: 'center', color: '#e8d8d0' });
+    U.icon(this.a.icons48.sword, x + bw + 6, y - 5, 16);
+    U.text(`${e.atk}`, x + bw + 24, y + 8, { size: 11, color: '#ffb0a0' });
+    if (e.poison) { U.icon(this.a.icons48.dagger, x - 38, y - 5, 16); U.text(`${e.poison}`, x - 6, y + 8, { size: 10, align: 'right', color: '#8aff6a' }); }
+    if (e.burn) { U.icon(this.a.icons48.fire, x - 60, y - 5, 16); U.text(`${e.burn}`, x - 42, y + 8, { size: 10, color: '#ff8a3a' }); }
+    if (C.warn && C.phase === 'ready') U.text(`Next: ${ABILITY[C.warn].name}`, W / 2, y + 34, { size: 10, align: 'center', color: ABILITY[C.warn].col });
+    const P = this.player;
+    if (P.burnT || P.spores) U.text(`${P.burnT ? `Burning ${P.burnT}  ` : ''}${P.spores ? `Spores ${P.spores}` : ''}`, W / 2, y + 46, { size: 9, align: 'center', color: '#ffb080' });
   }
 
   drawPrompt(now, ptr) {
@@ -2110,7 +2299,7 @@ export class Game {
 
   drawRewardUI(now, ptr) {
     const U = this.ui, W = this.W;
-    const title = { chest: 'TREASURE!', loot: 'LOOT!', boss: 'VICTORY SPOILS', trove: 'TREASURE TROVE!', bonus: 'BONUS CARD!', hoard: 'MIMIC HOARD!' }[this.reward.source] || 'CHOOSE A CARD';
+    const title = { chest: 'TREASURE!', loot: 'LOOT!', boss: 'VICTORY SPOILS', hoard_boss: "THE MASTER'S HOARD: TAKE A RELIC", trove: 'TREASURE TROVE!', bonus: 'BONUS CARD!', hoard: 'MIMIC HOARD!' }[this.reward.source] || 'CHOOSE A CARD';
     U.text(title, W / 2, 34, { size: 18, align: 'center', color: '#ffd878', spacing: 2 });
     const more = this.rewardQueue ? this.rewardQueue.length : 0;
     U.text(more ? `Choose a card to add to your reels  (+${more} more after this)` : 'Choose a card to add to your reels',
@@ -2164,9 +2353,9 @@ export class Game {
       U.button('stay', 'Not yet', W / 2 - 40, y + 36, 80, 16, ptr, { size: 10 });
       return;
     }
-    const next = BIOMES[biomeForFloor(this.floor + 1)].name;
-    U.text('Stairs lead deeper...', W / 2, y - 8, { size: 14, align: 'center', color: '#ffd878' });
-    U.text(`Floor ${this.floor + 1}: The ${next}. Keep going... or cash out?`, W / 2, y + 5, { size: 10, align: 'center', bold: false });
+    const nf = this.floor + 1;
+    U.text(this.bossFloor(nf) ? 'Something huge breathes below...' : 'Stairs lead deeper...', W / 2, y - 8, { size: 14, align: 'center', color: this.bossFloor(nf) ? '#ff8a6a' : '#ffd878' });
+    U.text(`Floor ${nf}: ${this.floorName(nf)}. Keep going... or cash out?`, W / 2, y + 5, { size: 10, align: 'center', bold: false });
     U.button('descend', 'DESCEND', W / 2 - 140, y + 16, 90, 22, ptr, { size: 12, fill: '#6a1c22', hotFill: '#8a262e', focus: this.stairFocus === 0 });
     U.button('cashout', `CASH OUT (${this.player.gold}g)`, W / 2 - 44, y + 16, 110, 22, ptr, { size: 11, focus: this.stairFocus === 1 });
     U.button('stay', 'Stay', W / 2 + 72, y + 16, 68, 22, ptr, { size: 11, focus: this.stairFocus === 2 });

@@ -86,6 +86,8 @@ const SFX = {
   horn: A => { A.tone(147, 0.9, { vol: 0.12, type: 'sawtooth', slide: 1.02, attack: 0.08 }); A.tone(220, 0.8, { vol: 0.08, type: 'sawtooth', attack: 0.1, delay: 0.05 }); A.tone(294, 0.6, { vol: 0.05, type: 'square', attack: 0.1, delay: 0.3 }); },
   apple: A => { A.noise(0.08, { vol: 0.3, freq: 2400, q: 1 }); A.noise(0.06, { vol: 0.2, freq: 1800, q: 1, delay: 0.08 }); arp(A, [784, 988, 1319, 1568], 0.06, { vol: 0.06, type: 'triangle', dur: 0.3, delay: 0.1 }); },
   drum: A => { for (let i = 0; i < 4; i++) { A.tone(90, 0.25, { vol: 0.3, type: 'sine', slide: 0.5, delay: i * 0.16 }); A.noise(0.1, { vol: 0.2, freq: 300, delay: i * 0.16 }); } },
+  bossroar: A => { A.noise(1.2, { vol: 0.5, freq: 260, q: 0.6, slide: 0.5 }); A.tone(70, 1.2, { vol: 0.35, type: 'sawtooth', slide: 0.7 }); A.tone(104, 1.1, { vol: 0.2, type: 'sawtooth', slide: 0.6, delay: 0.05 }); A.tone(40, 1.2, { vol: 0.4, type: 'sine', slide: 0.8 }); },
+  slam: A => { A.noise(0.9, { vol: 0.7, freq: 140, type: 'lowpass', slide: 0.4 }); A.tone(38, 0.9, { vol: 0.6, type: 'sine', slide: 0.5 }); A.noise(0.3, { vol: 0.3, freq: 1200, delay: 0.05 }); crackle(A, 10, 0.6, { vol: 0.08 }); },
   // ---- enemy voices: every foe sounds like itself when it shows up, strikes, takes a hit and falls.
   //      VOICES[kind] = { intro, attack, hurt, die } (each a function of the synth)
   // ---- the Rogue's summoned forest reels: a rustle of leaves and a wooden chime
@@ -112,6 +114,8 @@ export const SONGS = {
 };
 
 const gibber = (A, fs, step, o = {}) => fs.forEach((f, i) => A.tone(f, o.dur || 0.07, { vol: o.vol || 0.07, type: o.type || 'square', slide: o.slide || 0.85, delay: (o.delay || 0) + i * step }));
+const BOSS_VOICE = { goblin_king: 'goblin', bone_colossus: 'skeleton', high_priest: 'cultist', frost_ooze: 'slime',
+  forge_tusker: 'tusker', stone_warden: 'warden', sporemother: 'murk', mimic_king: 'mimic' };
 export const VOICES = {
   goblin: {
     intro: A => gibber(A, [620, 780, 540, 860], 0.07),
@@ -370,6 +374,7 @@ export class Audio {
 
   // an enemy's voice: voice('tusker', 'attack')
   voice(kind, what) {
+    kind = BOSS_VOICE[kind] || kind;                                // a boss speaks with its kin's voice
     const v = this.ctx && VOICES[kind] && VOICES[kind][what];
     if (v) v(this);
   }

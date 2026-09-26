@@ -1,11 +1,11 @@
 // main.js - boot: display canvas + offscreen 2D overlay, asset loading with a
 // progress bar, the frame pipeline, then the game loop.
-import { initGL } from './gl.js?v=20260926000112';
-import { loadAll } from './assets.js?v=20260926000112';
-import { Game } from './game.js?v=20260926000112';
-import { Input } from './input.js?v=20260926000112';
-import { Audio } from './audio.js?v=20260926000112';
-import { Pipeline } from './frame.js?v=20260926000112';
+import { initGL } from './gl.js?v=20260926000506';
+import { loadAll } from './assets.js?v=20260926000506';
+import { Game } from './game.js?v=20260926000506';
+import { Input } from './input.js?v=20260926000506';
+import { Audio } from './audio.js?v=20260926000506';
+import { Pipeline } from './frame.js?v=20260926000506';
 
 const glc = document.getElementById('gl');
 const ovc = document.createElement('canvas');           // 2D overlay, composited on the GPU

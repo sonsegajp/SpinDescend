@@ -4,9 +4,9 @@
 // Reels are cylinders with 8 symbol slots around them; their texture is a
 // canvas strip redrawn whenever the slots change. Rotation theta = k * PI/4
 // shows slot k in the top row and slot k-1 in the bottom row.
-import { gl, updateTex } from './gl.js?v=20260926000112';
-import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260926000112';
-import { SYMBOLS } from './data.js?v=20260926000112';
+import { gl, updateTex } from './gl.js?v=20260926000506';
+import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260926000506';
+import { SYMBOLS } from './data.js?v=20260926000506';
 
 const SLOTS = 8, CELLPX = 96;
 const STEP = Math.PI * 2 / SLOTS;
@@ -185,7 +185,10 @@ export class SlotMachine {
     this.press = Math.max(0, this.press - dt * 4);
     this.podT = this.podsOn ? Math.min(1, this.podT + dt * 3.2) : Math.max(0, this.podT - dt * 2.4);
     this.shake = Math.max(0, this.shake - dt * 3);
+    const locks = this.locks || [];
     for (const [i, r] of this.reels.entries()) {
+      const lk = locks.includes(i) ? (this.lockKind || 'stun') : null;
+      if ((r.locked || null) !== lk) { r.locked = lk; r.dirty = true; }
       if (r.spinning) {
         const t = clamp((now - r.t0) / r.dur, 0, 1);
         // fast constant spin, then ease out with a small overshoot settle
@@ -227,6 +230,13 @@ export class SlotMachine {
       const sym = SYMBOLS[r.slots[k]];
       const img = sym && this.assets.icons48[sym.icon];
       if (img) c.drawImage(img, (CELLPX - 72) / 2, y + (CELLPX - 72) / 2, 72, 72);
+      if (r.locked) {                                              // stunned by a quake / frozen by frost
+        c.fillStyle = r.locked === 'ice' ? 'rgba(150,210,255,0.55)' : 'rgba(40,24,20,0.55)';
+        c.fillRect(0, y, CELLPX, CELLPX);
+        c.strokeStyle = r.locked === 'ice' ? '#e8fbff' : '#140a08'; c.lineWidth = 3;
+        c.beginPath(); c.moveTo(10, y + 20); c.lineTo(40, y + 46); c.lineTo(30, y + 70); c.lineTo(70, y + 88);
+        c.moveTo(40, y + 46); c.lineTo(84, y + 30); c.stroke();
+      }
     }
     updateTex(r.tex, r.canvas, { nearest: true, mips: false, repeat: true });
     r.dirty = false;

@@ -323,7 +323,7 @@ export const ENEMIES = {
 // stair guards (elites) per biome
 export const ELITES = { dungeon: ['goblin', 'skeleton', 'wailer'], mines: ['tusker', 'skeleton', 'wickling'],
   crypt: ['wailer', 'cultist', 'warden'], frozen: ['warden', 'skeleton', 'tusker'], magma: ['tusker', 'warden', 'wickling'],
-  ruins: ['warden', 'tusker', 'wailer'] };
+  ruins: ['warden', 'tusker', 'wailer'], grotto: ['murk', 'wickling', 'slime'], vault: ['warden', 'jester', 'skeleton'] };
 
 export const BIOMES = {
   dungeon: {
@@ -359,9 +359,82 @@ export const BIOMES = {
   },
 };
 
-const ORDER = ['dungeon', 'mines', 'crypt', 'frozen', 'magma', 'ruins'];
-export function biomeForFloor(f) {
-  return ORDER[Math.min(ORDER.length - 1, Math.max(0, Math.floor((f - 1) / 2)))];
-}
+BIOMES.grotto = {
+  name: 'Fungal Grotto', enemies: ['slime', 'slime', 'murk', 'murk', 'duskwing', 'wickling', 'goblin'],
+  fog: [0.02, 0.05, 0.05], fogRange: [3.0, 14.0], ambient: [0.24, 0.29, 0.27],
+  torch: [0.3, 1.1, 0.95], torchRadius: 4.6, lanternOnPlayer: [0.3, 0.36, 0.34],
+};
+BIOMES.vault = {
+  name: 'Gilded Vault', enemies: ['skeleton', 'warden', 'jester', 'jester', 'cultist', 'goblin', 'duskwing'],
+  fog: [0.05, 0.035, 0.02], fogRange: [4.0, 16.0], ambient: [0.2, 0.17, 0.13],
+  torch: [1.35, 1.0, 0.55], torchRadius: 5.5, lanternOnPlayer: [0.32, 0.28, 0.22],
+};
 
-export const LAST_FLOOR = 12;
+// A run: four biomes of four levels each. The Dungeon always comes first; the other three are drawn at
+// random from the rest for every run. Level 4 of every biome is its boss hall.
+export const LEVELS_PER_BIOME = 4;
+export const ACTS = 4;
+export const LAST_FLOOR = LEVELS_PER_BIOME * ACTS;
+export const ROUTE_POOL = ['mines', 'crypt', 'frozen', 'magma', 'ruins', 'grotto', 'vault'];
+const DEFAULT_ROUTE = ['dungeon', 'mines', 'crypt', 'ruins'];
+export function makeRoute(rand) {
+  const pool = [...ROUTE_POOL], out = ['dungeon'];
+  while (out.length < ACTS) out.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
+  return out;
+}
+export function biomeForFloor(f, route = DEFAULT_ROUTE) {
+  return route[Math.min(route.length - 1, Math.max(0, Math.floor((f - 1) / LEVELS_PER_BIOME)))];
+}
+export const levelOf = f => ((f - 1) % LEVELS_PER_BIOME) + 1;
+export const isBossFloor = f => levelOf(f) === LEVELS_PER_BIOME;
+
+// One boss per biome, fought on its level 4 - a giant with its own abilities, used on a cycle and warned a
+// turn ahead. hp/atk before the floor's scaling. abilities (in turn order):
+//   slam     double damage, and the quake stuns one of your reels next spin (its symbols don't trigger)
+//   rally    a war cry: +2 attack for the fight and heal 6
+//   rebuild  once below half HP: pulls itself back together, healing 40%
+//   curse    two Curses join your reels for the fight
+//   drain    strikes and heals for the damage dealt
+//   freeze   ices over two of your reels for the next spin
+//   glacier  +6 armour that absorbs damage, melting 1 a turn
+//   charge   a charge for 2.5x damage
+//   burn     sets you ablaze: 2 damage at the start of each of your next 3 spins
+//   fortify  +8 armour that absorbs damage
+//   spores   poisons you: 1 damage a spin, stacking
+//   regrow   heals 5
+//   greed    steals 25% of your gold and grows +1 attack
+//   devour   bites twice
+export const BOSSES = {
+  dungeon: { kind: 'goblin_king', name: 'The Goblin Warlord', title: 'Tyrant of the Upper Halls', hp: 34, atk: 3,
+             abilities: ['slam', 'rally'], gold: [24, 32] },
+  mines:   { kind: 'bone_colossus', name: 'The Bone Colossus', title: 'Heaped from a Thousand Miners', hp: 40, atk: 3, armor: 1,
+             abilities: ['slam', 'rebuild'], gold: [26, 36] },
+  crypt:   { kind: 'high_priest', name: 'The High Priest', title: 'Voice of the Buried God', hp: 36, atk: 3,
+             abilities: ['curse', 'drain'], gold: [26, 36] },
+  frozen:  { kind: 'frost_ooze', name: 'The Frost Ooze', title: 'Heart of the Glacier', hp: 44, atk: 3,
+             abilities: ['freeze', 'glacier'], gold: [28, 38] },
+  magma:   { kind: 'forge_tusker', name: 'The Forgeborn Tusker', title: 'Anvil-Hide, Lava-Blood', hp: 42, atk: 4,
+             abilities: ['charge', 'burn'], gold: [30, 40] },
+  ruins:   { kind: 'stone_warden', name: 'The Stone Colossus', title: 'Last Guard of the Old Kings', hp: 46, atk: 4, armor: 2,
+             abilities: ['slam', 'fortify'], gold: [30, 42] },
+  grotto:  { kind: 'sporemother', name: 'The Sporemother', title: 'Root of the Grotto', hp: 40, atk: 3,
+             abilities: ['spores', 'regrow'], gold: [28, 38] },
+  vault:   { kind: 'mimic_king', name: 'The Mimic King', title: 'Crowned in Stolen Gold', hp: 44, atk: 4,
+             abilities: ['greed', 'devour'], gold: [40, 55] },
+};
+export const ABILITY = {
+  slam:    { name: 'SLAM', warn: 'raises its weapon high...', col: '#ff8a5a' },
+  rally:   { name: 'WAR CRY', warn: 'draws a deep breath...', col: '#ffb04a' },
+  rebuild: { name: 'REBUILD', warn: 'rattles, bones knitting...', col: '#e8dcc0' },
+  curse:   { name: 'CURSE', warn: 'begins a dark chant...', col: '#c86aff' },
+  drain:   { name: 'SOUL DRAIN', warn: 'reaches for your life...', col: '#ff5a7a' },
+  freeze:  { name: 'DEEP FREEZE', warn: 'breathes out frost...', col: '#8ad8ff' },
+  glacier: { name: 'GLACIER SHELL', warn: 'hardens into ice...', col: '#bfefff' },
+  charge:  { name: 'CHARGE', warn: 'paws the ground...', col: '#ff6a3a' },
+  burn:    { name: 'FIRESTORM', warn: 'glows white-hot...', col: '#ff9a2a' },
+  fortify: { name: 'FORTIFY', warn: 'sets its stone feet...', col: '#b8c8ff' },
+  spores:  { name: 'SPORE CLOUD', warn: 'swells with spores...', col: '#8aff6a' },
+  regrow:  { name: 'REGROW', warn: 'roots into the earth...', col: '#6aff8a' },
+  greed:   { name: 'GREED', warn: 'eyes your gold...', col: '#ffd24a' },
+  devour:  { name: 'DEVOUR', warn: 'opens its maw wide...', col: '#ff4a4a' },
+};

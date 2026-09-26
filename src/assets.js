@@ -1,7 +1,7 @@
 // assets.js - loads every model, texture, card, icon and UI image the game uses.
-import { parseSDM, Model } from './gl.js?v=20260926000112';
-import { parseSDA } from './anim.js?v=20260926000112';
-import { CARDS, SYMBOLS, CARD_ICON, OMENS } from './data.js?v=20260926000112';
+import { parseSDM, Model } from './gl.js?v=20260926000506';
+import { parseSDA } from './anim.js?v=20260926000506';
+import { CARDS, SYMBOLS, CARD_ICON, OMENS } from './data.js?v=20260926000506';
 
 export const BASE = (window.SD_ASSETS || '../assets/');
 // local dev: never trust the HTTP cache (assets are re-exported from Blender constantly)
@@ -22,6 +22,8 @@ export const MODELS = [
   'magma_wall0', 'magma_wall1', 'magma_wall2', 'magma_floor0', 'magma_floor1', 'magma_ceil', 'brazier',
   'ruin_floor0', 'ruin_floor1', 'ruin_wall0', 'ruin_wall1', 'ruin_wall2', 'ruin_pillar0', 'ruin_pillar1',
   'ruin_pillar_short0', 'ruin_tower0', 'ruin_tower1', 'grass0', 'grass1', 'rubble0',
+  'grotto_wall0', 'grotto_wall1', 'grotto_wall2', 'grotto_floor0', 'grotto_floor1', 'grotto_ceil', 'shrooms', 'roots',
+  'vault_wall0', 'vault_wall1', 'vault_wall2', 'vault_floor0', 'vault_floor1', 'vault_ceil', 'vault_pillar', 'coin_pile', 'chandelier',
 ];
 
 function loadImage(url) {
