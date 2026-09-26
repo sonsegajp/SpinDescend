@@ -27,6 +27,25 @@ function sprite(kind, col, core) {
   return c;
 }
 
+// the PS1's 15-bit colour: 5 bits a channel under a 4x4 ordered dither, and alpha cut to a few hard steps
+// (its sprites were cut-outs and screen-door blends, never smooth gradients)
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16 - 0.5);
+function ps1Dither(g, w, h) {
+  const img = g.getImageData(0, 0, w, h), d = img.data;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4, a = d[i + 3];
+      if (!a) continue;
+      const b = BAYER4[(y & 3) * 4 + (x & 3)];
+      const aq = Math.round(a / 255 * 3 + b) / 3;                // four alpha steps
+      if (aq <= 0) { d[i + 3] = 0; continue; }
+      d[i + 3] = Math.min(255, aq * 255);
+      for (let k = 0; k < 3; k++) d[i + k] = Math.min(255, Math.max(0, Math.round(d[i + k] / 255 * 31 + b) / 31 * 255));
+    }
+  }
+  g.putImageData(img, 0, 0);
+}
+
 export class FX {
   constructor() {
     this.parts = [];
@@ -65,9 +84,9 @@ export class FX {
     }
   }
 
-  ring(x, y, r0, r1, dur, col, w = 2, add = true) {
+  ring(x, y, r0, r1, dur, col, w = 2, add = true, squash = 1) {   // squash < 1: a flat shockwave along the ground
     this.parts.push({ x, y, vx: 0, vy: 0, g: 0, drag: 0, t: 0, life: dur, size: r0, size1: r1, shape: 'ring', col, add,
-                      rot: 0, vr: 0, alpha: 1, w });
+                      rot: 0, vr: 0, alpha: 1, w, squash });
   }
 
   glow(x, y, r, dur, col, grow = 1.6) {
@@ -85,9 +104,29 @@ export class FX {
                       shape: 'beam', col, add: true, rot: 0, vr: 0, alpha: 1 });
   }
 
-  slash(x, y, ang, len, dur, col, w = 3) {                // a crescent swipe across the target
-    this.parts.push({ x, y, vx: 0, vy: 0, g: 0, drag: 0, t: 0, life: dur, size: len, size1: len * 1.15, shape: 'slash',
-                      col, add: true, rot: ang, vr: 0, alpha: 1, w });
+  // an animated cut: a tapered crescent whose leading edge sweeps along an arc (through x, y at its middle, the
+  // circle's centre r behind it) while its tail chases it down - glow, body and white-hot core layers.
+  // o: rot, r, span (radians), w (thickness), dir (+1 / -1), life, delay, sweep (share of life the edge takes),
+  //    col (glow), edge (body), core, alpha
+  swipe(x, y, o) {
+    this.parts.push({ x, y, vx: 0, vy: 0, g: 0, drag: 0, t: -(o.delay || 0), life: o.life || 0.34, size: 0, size1: 0,
+                      shape: 'swipe', col: o.col || '#6aa8ff', edge: o.edge || '#d8ecff', core: o.core || '#ffffff', add: true,
+                      rot: o.rot || 0, vr: 0, alpha: o.alpha ?? 1, r: o.r || 30, span: o.span || 2, w: o.w || 6, dir: o.dir || 1,
+                      sweep: o.sweep || 0.32 });
+  }
+
+  // a straight thrust / flying streak: a pointed sliver that shoots from `back` behind x, y to `len` past it
+  streak(x, y, o) {
+    this.parts.push({ x, y, vx: 0, vy: 0, g: 0, drag: 0, t: -(o.delay || 0), life: o.life || 0.28, size: 0, size1: 0,
+                      shape: 'streak', col: o.col || '#6aa8ff', edge: o.edge || '#d8ecff', core: o.core || '#ffffff', add: true,
+                      rot: o.rot || 0, vr: 0, alpha: o.alpha ?? 1, len: o.len || 40, back: o.back || 20, w: o.w || 5,
+                      sweep: o.sweep || 0.3 });
+  }
+
+  // a lens flare: long thin crossed spikes and a hot core that punch out and fade (the moment a blow connects)
+  flare(x, y, size, col = '#ffffff', dur = 0.22, rot = 0, delay = 0) {
+    this.parts.push({ x, y, vx: 0, vy: 0, g: 0, drag: 0, t: -delay, life: dur, size: size * 0.4, size1: size, shape: 'flare',
+                      col, add: true, rot, vr: 0.8, alpha: 1 });
   }
 
   flash(col, dur = 0.22, a = 0.45) { this.flashes.push({ col, t: 0, dur, a }); }
@@ -132,25 +171,50 @@ export class FX {
   }
 
   // ---------------------------------------------------------------- drawing
-  // project(x, y, z) -> [screenX, screenY, pixelsPerWorldUnit] (or null when behind the camera)
-  draw(g, W, H, project) {
-    if (project) {
-      for (const p of this.wparts) {
-        const s = project(p.x, p.y, p.z);
-        if (!s) continue;
-        this.drawPart(g, { ...p, x: s[0], y: s[1], size: p.size * s[2], size1: p.size1 * s[2] });
-      }
-    }
+  // project(x, y, z) -> [screenX, screenY, pixelsPerWorldUnit] (or null when behind the camera).
+  // pixel > 0: the PS1 look - everything is drawn on low-res layers (one texel = `pixel` units), dithered down to
+  // 15-bit colour and a few alpha steps, and blown back up with hard edges (a normal layer, then an additive one)
+  draw(g, W, H, project, pixel = 0) {
     for (const f of this.flashes) {
       g.globalAlpha = f.a * (1 - f.t / f.dur);
       g.globalCompositeOperation = 'lighter';
       g.fillStyle = f.col; g.fillRect(0, 0, W, H);
     }
-    g.globalCompositeOperation = 'source-over';
-    for (const p of this.parts) this.drawPart(g, p);
-    for (const s of this.shots) this.drawShot(g, s);
     g.globalAlpha = 1;
     g.globalCompositeOperation = 'source-over';
+    const any = this.parts.length || this.shots.length || this.wparts.length;
+    if (!any) return;
+    let norm = g, add = g, lw = 0, lh = 0;
+    if (pixel) {
+      lw = Math.ceil(W / pixel); lh = Math.ceil(H / pixel);
+      if (!this.layers) this.layers = [0, 1].map(() => { const c = document.createElement('canvas'); return { c, g: c.getContext('2d', { willReadFrequently: true }) }; });
+      for (const L of this.layers) {
+        if (L.c.width !== lw || L.c.height !== lh) { L.c.width = lw; L.c.height = lh; }
+        L.g.setTransform(1, 0, 0, 1, 0, 0);
+        L.g.clearRect(0, 0, lw, lh);
+        L.g.setTransform(1 / pixel, 0, 0, 1 / pixel, 0, 0);
+      }
+      [norm, add] = [this.layers[0].g, this.layers[1].g];
+    }
+    const layer = p => (p.add ? add : norm);
+    if (project) {
+      for (const p of this.wparts) {
+        const s = project(p.x, p.y, p.z);
+        if (!s) continue;
+        this.drawPart(layer(p), { ...p, x: s[0], y: s[1], size: p.size * s[2], size1: p.size1 * s[2] });
+      }
+    }
+    for (const p of this.parts) this.drawPart(layer(p), p);
+    for (const s of this.shots) this.drawShot(norm, s);
+    for (const c of pixel ? [norm, add] : [g]) { c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; }
+    if (!pixel) return;
+    for (const L of this.layers) ps1Dither(L.g, lw, lh);
+    g.save();
+    g.imageSmoothingEnabled = false;
+    g.drawImage(this.layers[0].c, 0, 0, lw * pixel, lh * pixel);
+    g.globalCompositeOperation = 'lighter';
+    g.drawImage(this.layers[1].c, 0, 0, lw * pixel, lh * pixel);
+    g.restore();
   }
 
   drawShot(g, s) {
@@ -177,7 +241,7 @@ export class FX {
   }
 
   drawPart(g, p) {
-    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || p.t < 0) return;          // t < 0: still waiting on its delay
     const k = p.t / p.life;
     const a = p.alpha * (k < 0.1 ? k / 0.1 : 1 - Math.max(0, (k - 0.35) / 0.65));
     const s = p.size + (p.size1 - p.size) * k;
@@ -194,11 +258,11 @@ export class FX {
       case 'glow':                                                       // white-hot core fading into its colour
         g.drawImage(sprite('glow', p.col), p.x - s, p.y - s, s * 2, s * 2); break;
       case 'ring': {                                                     // a soft wide band under a bright thin edge
-        const w = p.w * (1 - k * 0.6);
+        const w = p.w * (1 - k * 0.6), sq = p.squash || 1;
         g.globalAlpha *= 0.35; g.lineWidth = w * 3.5;
-        g.beginPath(); g.arc(p.x, p.y, s, 0, TAU); g.stroke();
+        g.beginPath(); g.ellipse(p.x, p.y, s, s * sq, 0, 0, TAU); g.stroke();
         g.globalAlpha /= 0.35; g.lineWidth = w; g.strokeStyle = '#ffffff';
-        g.beginPath(); g.arc(p.x, p.y, s, 0, TAU); g.stroke(); break;
+        g.beginPath(); g.ellipse(p.x, p.y, s, s * sq, 0, 0, TAU); g.stroke(); break;
       }
       case 'star': {
         const l = s * 1.6;
@@ -249,16 +313,55 @@ export class FX {
         for (const [dx, dy] of spots) g.fillRect(dx - 0.6, dy - 0.6, 1.2, 1.2);
         g.restore(); break;
       }
-      case 'slash': {
+      case 'flare': {
+        const fa = Math.max(0, 1 - k) ** 1.5;
         g.save(); g.translate(p.x, p.y); g.rotate(p.rot);
-        const sweep = Math.min(1, k * 3.5);
-        g.lineCap = 'round';
-        for (const [wm, al] of [[p.w * 2.4, 0.35], [p.w, 1]]) {
-          g.globalAlpha = Math.max(0, a * al);
-          g.lineWidth = wm * (1 - k * 0.7);
+        for (const [len, wd, al, c] of [[s, s * 0.09, 0.9, p.col], [s * 0.55, s * 0.16, 0.5, p.col], [s * 0.35, s * 0.05, 1, '#ffffff']]) {
+          g.globalAlpha = al * fa; g.fillStyle = c;
+          for (const r of [0, Math.PI / 2]) {
+            g.rotate(r);
+            g.beginPath(); g.moveTo(-len, 0); g.lineTo(0, -wd); g.lineTo(len, 0); g.lineTo(0, wd); g.closePath(); g.fill();
+            g.rotate(-r);
+          }
+        }
+        g.globalAlpha = fa;
+        g.drawImage(sprite('glow', p.col), -s * 0.25, -s * 0.25, s * 0.5, s * 0.5);
+        g.restore(); break;
+      }
+      case 'swipe': {
+        const h = 1 - (1 - Math.min(1, k / p.sweep)) ** 2;                   // the edge races out...
+        const tail = Math.max(0, (k - p.sweep * 0.6) / (1 - p.sweep * 0.6)) ** 2;   // ...the tail chases it down
+        if (h - tail < 0.005) break;
+        const fade = p.alpha * (1 - Math.max(0, (k - 0.55) / 0.45)), thin = 1 - 0.45 * k, N = 20;
+        g.save(); g.translate(p.x, p.y); g.rotate(p.rot);
+        for (const [wm, col, al, off] of [[3.6, p.col, 0.2, 0.5], [2.1, p.col, 0.5, 0.5], [1, p.edge, 1, 0.35], [0.4, p.core, 1, 0.9]]) {
+          g.globalAlpha = Math.max(0, al * fade); g.fillStyle = col;
           g.beginPath();
-          g.arc(0, s * 0.9, s, -Math.PI / 2 - 0.9, -Math.PI / 2 - 0.9 + 1.8 * sweep);
-          g.stroke();
+          const inner = [];
+          for (let i = 0; i <= N; i++) {
+            const f = i / N, u = tail + (h - tail) * f;
+            const th = p.dir * (-p.span / 2 + p.span * u);
+            const wd = p.w * wm * thin * Math.sin(Math.PI * f ** 1.4) ** 0.7;   // thickest just behind the edge
+            const ro = p.r + wd * off, ri = p.r - wd * (1 - off), c = Math.cos(th), sn = Math.sin(th);
+            if (i === 0) g.moveTo(-p.r + ro * c, ro * sn); else g.lineTo(-p.r + ro * c, ro * sn);
+            inner.push(-p.r + ri * c, ri * sn);
+          }
+          for (let i = inner.length - 2; i >= 0; i -= 2) g.lineTo(inner[i], inner[i + 1]);
+          g.closePath(); g.fill();
+        }
+        g.restore(); break;
+      }
+      case 'streak': {
+        const h = 1 - (1 - Math.min(1, k / p.sweep)) ** 2;
+        const tail = Math.max(0, (k - p.sweep * 0.5) / (1 - p.sweep * 0.5)) ** 2;
+        const Lt = p.len + p.back, x0 = -p.back + Lt * tail, x1 = -p.back + Lt * h;
+        if (x1 - x0 < 0.5) break;
+        const fade = p.alpha * (1 - Math.max(0, (k - 0.55) / 0.45)), thin = 1 - 0.4 * k;
+        g.save(); g.translate(p.x, p.y); g.rotate(p.rot);
+        for (const [wm, col, al] of [[3.8, p.col, 0.2], [2.3, p.col, 0.5], [1, p.edge, 1], [0.4, p.core, 1]]) {
+          const hw = p.w * wm * thin / 2, xm = x0 + (x1 - x0) * 0.72;
+          g.globalAlpha = Math.max(0, al * fade); g.fillStyle = col;
+          g.beginPath(); g.moveTo(x0, 0); g.lineTo(xm, -hw); g.lineTo(x1, 0); g.lineTo(xm, hw); g.closePath(); g.fill();
         }
         g.restore(); break;
       }
@@ -325,186 +428,297 @@ const blade = (o) => ({
   impact(fx, x, y, S, I) { o.hit(fx, x, y, S, I); },
 });
 
-const SLASHES = (fx, x, y, n, col, len = 26, w = 3) => {
-  for (let i = 0; i < n; i++) fx.slash(x + R(-6, 6), y + R(-6, 6), R(-0.6, 0.6) + (i % 2 ? Math.PI : 0) + 0.8, len, 0.32, pick(col), w);
-};
+// ---- melee strokes
+const later = (s, fn) => setTimeout(fn, s * 1000);
+const STEEL = { col: '#4a8aff', edge: '#d0e4ff', core: '#ffffff' };
+const GOLD = { col: '#e88a10', edge: '#ffd870', core: '#fffbe8' };
+const FIRE = { col: '#e83a0a', edge: '#ffa030', core: '#fff0b0' };
+const HOLY = { col: '#3a9aff', edge: '#c8f0ff', core: '#ffffff' };
+const DARK = { col: '#5a1a9a', edge: '#b890ff', core: '#f4e8ff' };
+const POISON = { col: '#2a8a2a', edge: '#a8ff6a', core: '#f0ffe0' };
+const BLOOD = { col: '#8a0a14', edge: '#ff6a5a', core: '#ffe8e0' };
+
+let SZ = 1;                     // stroke scale for the blow being drawn: set from the foe's size on screen
+
+// the frame of a cut through (x, y) travelling toward `ang`: bend flips which way the crescent bows; the arc is
+// slid out so the crescent's centre of mass (not its outermost point) sits on the foe
+function arcFrame(x, y, ang, r, span, bend) {
+  const rot = bend > 0 ? ang - Math.PI / 2 : ang + Math.PI / 2, dir = bend > 0 ? 1 : -1;
+  const out = r * (1 - Math.sin(span / 2) / (span / 2));
+  return { rot, dir, x: x + Math.cos(rot) * out, y: y + Math.sin(rot) * out };
+}
+function cut(fx, x, y, ang, o) {
+  const r = o.r * SZ, w = o.w * SZ, bend = o.bend ?? 1, F = arcFrame(x, y, ang, r, o.span, bend);
+  fx.swipe(F.x, F.y, { ...o, r, w, rot: F.rot, dir: F.dir });
+  const t = (o.delay || 0) + (o.life || 0.34) * (o.sweep || 0.32) * 0.7;                // sparks stream off its path
+  const z = SZ;                                                                       // (SZ may belong to another blow by then)
+  later(t, () => alongArc(x, y, ang, o.r, o.span, 7, (px, py, u) => fx.burst(px, py, {
+    n: 2, speed: [60, 180] , life: [0.15, 0.32], shape: 'spark', col: [o.edge || '#fff', o.core || '#fff'], add: true, drag: 3, len: 0.045,
+    dir: ang + R(-0.5, 0.5), spread: 0.4 }), bend, z));
+}
+// n points spaced along that cut's arc (embers off a flaming blade, powder going off down its fuller)
+function alongArc(x, y, ang, r0, span, n, fn, bend = 1, z = SZ) {
+  const r = r0 * z, F = arcFrame(x, y, ang, r, span, bend), c = Math.cos(F.rot), s = Math.sin(F.rot);
+  for (let i = 0; i < n; i++) {
+    const u = (i + 0.5) / n, th = F.dir * (-span / 2 + span * u);
+    const lx = -r + r * Math.cos(th), ly = r * Math.sin(th);
+    fn(F.x + lx * c - ly * s, F.y + lx * s + ly * c, u);
+  }
+}
+// a thrust / flying streak sized to the foe
+function thrust(fx, x, y, o) {
+  fx.streak(x, y, { ...o, len: o.len * SZ, back: o.back * SZ, w: o.w * SZ });
+}
+// the symbol flashes on its reel as the blow is struck
+function glint(fx, x, y, col) {
+  fx.glow(x, y, 16, 0.22, col, 1.5);
+  fx.burst(x, y, { n: 1, speed: [0, 1], life: [0.25, 0.3], size: [4, 4], shape: 'star', col: '#ffffff', add: true });
+}
+const melee = (o) => ({
+  target: 'enemy', travel: o.travel ?? 0.16,
+  launch(fx, a, b, S) { S.play(o.launchSfx || 'whoosh'); glint(fx, a[0], a[1], o.glint || '#e8f4ff'); },
+  impact(fx, x, y, S, I) {
+    SZ = 1.5 * (I.size || 1);
+    fx.flare(x, y, 46 * SZ, o.glint || '#e8f4ff', 0.2, R(0, 0.8), o.flareAt || 0.03);
+    fx.glow(x, y, 15 * SZ, 0.2, o.glint || '#e8f4ff', 1.5);
+    o.hit(fx, x, y, S, I);
+  },
+});
 
 export const RECIPES = {
-  sword: blade({ hit(fx, x, y, S, I) { SLASHES(fx, x, y, 1, C.steel); sparks(fx, x, y, C.steel, 12); S.play('slash'); } }),
-  sword2: blade({ hit(fx, x, y, S, I) { SLASHES(fx, x, y, 2, C.steel, 30); sparks(fx, x, y, C.steel, 18); S.play('slash2'); } }),
-  sword3: blade({
-    col: C.gold,
-    hit(fx, x, y, S, I) { SLASHES(fx, x, y, 2, C.gold, 32, 4); sparks(fx, x, y, C.gold, 20); stars(fx, x, y, C.gold, 6); S.play('shing'); },
-  }),
-  sword4: blade({
-    col: C.gold, head: { r: 10, col: 'rgba(255,210,74,0.6)' },
+  // ---- melee: nothing is thrown - the symbol flashes on its reel and the blow lands on the foe as its own
+  // animated cut (see swipe / streak above): every weapon has a stroke of its own
+  sword: melee({
     hit(fx, x, y, S, I) {
-      SLASHES(fx, x, y, 2, C.gold, 34, 4);
-      fx.burst(x, y, { n: 14, speed: [60, 160], life: [0.6, 1.0], size: [3, 5], shape: 'coin', col: C.gold, g: 320, spin: 2 });
+      cut(fx, x, y, 0.3 * Math.PI, { r: 34, span: 1.9, w: 7, ...STEEL });
+      sparks(fx, x, y, C.steel, 12, [80, 200], 0.3 * Math.PI, 0.5);
+      S.play('slash');
+    },
+  }),
+  sword2: melee({                                        // a fast X: down-right, then back down-left
+    hit(fx, x, y, S, I) {
+      cut(fx, x, y, 0.28 * Math.PI, { r: 32, span: 1.8, w: 6, ...STEEL, life: 0.3 });
+      cut(fx, x, y, 0.72 * Math.PI, { r: 32, span: 1.8, w: 6, ...STEEL, life: 0.3, delay: 0.09, bend: -1 });
+      sparks(fx, x, y, C.steel, 10, [80, 200], 0.28 * Math.PI, 0.5);
+      later(0.09, () => { sparks(fx, x, y, C.steel, 10, [80, 200], 0.72 * Math.PI, 0.5); S.play('slash2'); });
+      S.play('slash');
+    },
+  }),
+  sword3: melee({                                        // a wide golden crescent with its afterimage
+    glint: '#ffe08a',
+    hit(fx, x, y, S, I) {
+      cut(fx, x, y, 0.25 * Math.PI, { r: 42, span: 2.3, w: 10, ...GOLD });
+      cut(fx, x - 5, y + 4, 0.25 * Math.PI, { r: 42, span: 2.3, w: 6, ...GOLD, delay: 0.05, alpha: 0.45 });
+      alongArc(x, y, 0.25 * Math.PI, 42, 2.3, 5, (px, py) => stars(fx, px, py, C.gold, 2, 6));
+      sparks(fx, x, y, C.gold, 16, [80, 220], 0.25 * Math.PI, 0.6);
+      S.play('shing');
+    },
+  }),
+  sword4: melee({                                        // the Blade of Fortune writes a golden Z
+    glint: '#ffe08a',
+    hit(fx, x, y, S, I) {
+      cut(fx, x, y - 14 * SZ, 0, { r: 70, span: 0.8, w: 7, ...GOLD, life: 0.3 });
+      cut(fx, x, y, 0.78 * Math.PI, { r: 60, span: 0.8, w: 8, ...GOLD, life: 0.3, delay: 0.07 });
+      cut(fx, x, y + 14 * SZ, 0, { r: 70, span: 0.8, w: 7, ...GOLD, life: 0.3, delay: 0.14 });
+      later(0.16, () => fx.burst(x, y, { n: 14, speed: [60, 160], life: [0.6, 1.0], size: [3, 5], shape: 'coin', col: C.gold, g: 320, spin: 2 }));
       S.play('fortune');
     },
   }),
-  dagger: blade({
-    travel: 0.18, arc: 6, spin: 0, point: Math.PI / 4, col: C.poison,
+  dagger: melee({                                        // three quick poisoned nicks
+    travel: 0.12, glint: '#b8ff7a',
     hit(fx, x, y, S, I) {
-      sparks(fx, x, y, C.steel, 8, [60, 140]);
+      for (let i = 0; i < 3; i++) {
+        const a = R(0, TAU);
+        cut(fx, x + R(-10, 10), y + R(-10, 10), a, { r: 16, span: 1.6, w: 4, ...POISON, life: 0.22, delay: i * 0.06, bend: i % 2 ? -1 : 1 });
+        later(i * 0.06, () => { sparks(fx, x, y, C.steel, 5, [60, 140], a, 0.6); S.play('stab'); });
+      }
       fx.burst(x, y, { n: 12, speed: [10, 40], life: [0.6, 1.1], size: [1.5, 3], shape: 'bubble', col: C.poison, g: -50, jx: 12 });
+    },
+  }),
+  spear: melee({                                         // a thrust: the point drives straight through
+    travel: 0.14,
+    hit(fx, x, y, S, I) {
+      thrust(fx, x, y, { rot: -0.12, len: 60, back: 46, w: 9, ...STEEL, life: 0.3 });
+      thrust(fx, x, y + 6, { rot: -0.12, len: 44, back: 30, w: 4, ...STEEL, life: 0.26, delay: 0.05, alpha: 0.6 });
+      fx.ring(x + 34 * SZ, y - 4, 3, 22 * SZ, 0.25, '#e8eef8', 2, true, 0.5);
+      sparks(fx, x + 20, y - 2, C.silver, 16, [140, 280], -0.12, 0.45);
+      S.play('thrust');
+    },
+  }),
+  axe: melee({                                           // an overhead chop, straight down, that bites
+    travel: 0.2, glint: '#ffd0b0',
+    hit(fx, x, y, S, I) {
+      cut(fx, x, y, Math.PI / 2, { r: 48, span: 1.5, w: 13, col: '#c8501a', edge: '#ffc8a0', core: '#fff4e8', life: 0.34 });
+      later(0.08, () => {
+        fx.ring(x, y + 20 * SZ, 4, 40 * SZ, 0.3, '#ffe0c0', 3, true, 0.3);
+        fx.burst(x, y + 10, { n: 14, speed: [80, 200], life: [0.4, 0.8], size: [2, 4], shape: 'shard', col: C.wood, g: 380, spin: 3, dir: -Math.PI / 2, spread: 1.2 });
+        if (I.pierce) fx.burst(x, y, { n: 10, speed: [60, 160], life: [0.3, 0.6], size: [2, 4], shape: 'shard', col: C.silver, g: 300 });
+        S.shake(0.6);
+      });
+      S.play('chop');
+    },
+  }),
+  knives: melee({                                        // two blurs of steel whip in from either side
+    travel: 0.14,
+    hit(fx, x, y, S, I) {
+      thrust(fx, x - 6, y - 5, { rot: 0.18, len: 18, back: 70, w: 3, ...STEEL, life: 0.24 });
+      thrust(fx, x + 6, y + 6, { rot: Math.PI - 0.18, len: 18, back: 70, w: 3, ...STEEL, life: 0.24, delay: 0.08 });
+      sparks(fx, x - 8, y - 6, C.steel, 8, [80, 180], 0.18, 0.7);
+      later(0.08, () => { sparks(fx, x + 8, y + 6, C.steel, 8, [80, 180], Math.PI - 0.18, 0.7); S.play('stab'); });
       S.play('stab');
     },
   }),
-  spear: blade({
-    travel: 0.16, arc: 0, spin: 0, point: Math.PI / 4, scale: 1.3,
-    trail: { shape: 'spark', col: C.silver, speed: [2, 8], life: [0.2, 0.35], add: true, len: 0.08, w: 2 }, rate: 120,
-    hit(fx, x, y, S, I) { sparks(fx, x, y, C.silver, 16, [120, 260], -Math.PI / 2, 1.2); fx.ring(x, y, 4, 24, 0.25, '#e8eef8'); S.play('thrust'); },
-  }),
-  axe: blade({
-    spin: 26, arc: 40, scale: 1.25, trail: { shape: 'px', col: C.wood, speed: [5, 30], life: [0.2, 0.4], size: [1, 2] },
+  hammer: melee({                                        // the head comes down: a smash and a shockwave
+    travel: 0.22, glint: '#ffe8a0',
     hit(fx, x, y, S, I) {
-      SLASHES(fx, x, y, 1, ['#ffd0b0'], 34, 5);
-      fx.burst(x, y, { n: 14, speed: [80, 200], life: [0.4, 0.8], size: [2, 4], shape: 'shard', col: C.wood, g: 380, spin: 3 });
-      if (I.pierce) { fx.burst(x, y, { n: 10, speed: [60, 160], life: [0.3, 0.6], size: [2, 4], shape: 'shard', col: C.silver, g: 300 }); }
-      S.shake(0.5); S.play('chop');
-    },
-  }),
-  knives: {
-    target: 'enemy', travel: 0.2,
-    launch(fx, a, b, S) {
-      for (let i = 0; i < 2; i++) {
-        setTimeout(() => S.play('throw'), i * 90);
-        fx.shot({ from: [a[0] + (i ? 8 : -8), a[1]], to: [b[0] + (i ? 10 : -10), b[1] + (i ? 6 : -6)], dur: 0.2 + i * 0.08, arc: 10,
-                  img: S.icon, spin: 30, scale: 0.8, trail: { shape: 'spark', col: C.steel, speed: [3, 10], life: [0.12, 0.2], add: true } });
-      }
-    },
-    impact(fx, x, y, S, I) {
-      sparks(fx, x - 8, y - 6, C.steel, 8); setTimeout(() => { sparks(fx, x + 8, y + 6, C.steel, 8); S.play('stab'); }, 80); S.play('stab');
-    },
-  },
-  hammer: blade({
-    spin: 12, arc: 70, scale: 1.3, travel: 0.34, ease: k => k * k,
-    hit(fx, x, y, S, I) {
-      fx.ring(x, y, 6, 46, 0.35, '#ffe8a0', 3); fx.ring(x, y, 4, 30, 0.3, '#ffffff', 2);
-      fx.burst(x, y + 10, { n: 16, speed: [60, 140], life: [0.3, 0.6], size: [2, 3.5], col: ['#b8a890', '#8a7a66'], g: 300, dir: -Math.PI / 2, spread: 1.3 });
-      if (I.stun) for (let i = 0; i < 5; i++) {
-        fx.burst(x + Math.cos(i * 1.26) * 18, y - 26 + Math.sin(i * 1.26) * 5, { n: 1, speed: [0, 1], life: [1.0, 1.2], size: [2.5, 2.5], shape: 'star', col: '#ffe070', add: true });
-      }
-      S.shake(0.8); S.play(I.stun ? 'stun' : 'bonk');
+      thrust(fx, x, y, { rot: Math.PI / 2, len: 8, back: 70, w: 14, col: '#c89a4a', edge: '#ffe8b8', core: '#ffffff', life: 0.2 });
+      later(0.06, () => {
+        fx.flash('#fff0c0', 0.12, 0.3);
+        fx.ring(x, y + 18 * SZ, 6, 64 * SZ, 0.4, '#ffe8a0', 4, true, 0.3);
+        fx.ring(x, y + 18 * SZ, 4, 40 * SZ, 0.3, '#ffffff', 2, true, 0.3);
+        fx.glow(x, y + 8, 30, 0.25, 'rgba(255,230,160,1)', 1.4);
+        fx.burst(x, y + 16, { n: 18, speed: [60, 160], life: [0.3, 0.7], size: [2, 3.5], col: ['#b8a890', '#8a7a66'], g: 320, dir: -Math.PI / 2, spread: 1.4 });
+        if (I.stun) for (let i = 0; i < 5; i++) {
+          fx.burst(x + Math.cos(i * 1.26) * 18, y - 26 + Math.sin(i * 1.26) * 5, { n: 1, speed: [0, 1], life: [1.0, 1.2], size: [2.5, 2.5], shape: 'star', col: '#ffe070', add: true });
+        }
+        S.shake(0.9);
+      });
+      S.play(I.stun ? 'stun' : 'bonk');
     },
   }),
-  crossbow: blade({
-    travel: 0.12, arc: 0, spin: 0, point: Math.PI / 4, scale: 1.0,
-    trail: { shape: 'spark', col: ['#ffe8c0', '#fff'], speed: [1, 4], life: [0.15, 0.25], add: true, len: 0.1 }, rate: 140, launchSfx: 'twang',
+  crossbow: melee({                                      // a bolt snaps home: a streak of light, a puncture
+    travel: 0.1, launchSfx: 'twang',
     hit(fx, x, y, S, I) {
-      sparks(fx, x, y, ['#ffe8c0', '#fff'], 10, [100, 220]);
+      thrust(fx, x, y, { rot: 0.08, len: 10, back: 110, w: 3.5, col: '#c8a060', edge: '#ffe8c0', core: '#ffffff', life: 0.2 });
+      sparks(fx, x, y, ['#ffe8c0', '#fff'], 12, [100, 240], 0.08, 0.8);
+      fx.ring(x, y, 2, 14, 0.18, '#ffe8c0', 2);
       if (I.crit) { fx.ring(x, y, 3, 30, 0.3, '#ffea4a', 3); stars(fx, x, y, C.gold, 8); }
       S.play('thunk');
     },
   }),
-  flail: blade({
-    spin: 20, arc: 50, scale: 1.2, trail: { shape: 'px', col: ['#8a8a94', '#c8c8d0'], speed: [0, 5], life: [0.25, 0.35], size: [1, 1.5] }, rate: 90,
+  flail: melee({                                         // the ball whirls a full circle round the foe
+    travel: 0.18,
     hit(fx, x, y, S, I) {
-      fx.burst(x, y, { n: 10 + I.dmg * 4, speed: [80, 220], life: [0.3, 0.6], size: [1.5, 3], shape: 'spark', col: ['#fff', '#ffd08a'], add: true, drag: 3 });
-      fx.ring(x, y, 4, 14 + I.dmg * 6, 0.3, '#fff0c8', 2);
+      const a0 = R(0, TAU);
+      const rr = 26 * SZ;
+      fx.swipe(x + Math.cos(a0) * rr, y + Math.sin(a0) * rr, { rot: a0, r: rr, span: TAU * 0.92, w: 6 * SZ, dir: 1, col: '#6a6a80', edge: '#d8d8e8', core: '#ffffff', life: 0.4, sweep: 0.5 });
+      for (let i = 0; i < 3; i++) later(0.08 + i * 0.07, () => {
+        const a = a0 + (i + 1) * 1.9;
+        const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+        fx.burst(px, py, { n: 6 + I.dmg * 2, speed: [80, 200], life: [0.25, 0.5], size: [1.5, 3], shape: 'spark', col: ['#fff', '#ffd08a'], add: true, drag: 3 });
+        fx.ring(px, py, 3, 12 + I.dmg * 3, 0.25, '#fff0c8', 2);
+      });
       puff(fx, x, y + 12, C.smoke, 6);
       S.play('clank');
     },
   }),
-  flame: blade({
-    head: { r: 12, col: 'rgba(255,120,30,0.8)', core: '#fff4c0' }, spin: 10, scale: 0.9, rate: 110,
-    trail: { col: C.fire, speed: [5, 30], life: [0.25, 0.5], size: [1.5, 3.5], add: true, g: -80 }, launchSfx: 'fireball',
+  flame: melee({                                         // a burning crescent that leaves the air on fire
+    glint: '#ffb030', launchSfx: 'fireball',
     hit(fx, x, y, S, I) {
-      fx.glow(x, y, 34, 0.4, 'rgba(255,130,30,1)', 1.8);
-      fx.burst(x, y, { n: 8, speed: [20, 60], life: [0.3, 0.6], size: [5, 8], grow: 1.7, shape: 'glow', col: ['rgba(255,150,40,0.9)', 'rgba(255,80,20,0.9)'], g: -90 });
-      fx.burst(x, y, { n: 30, speed: [40, 160], life: [0.4, 0.9], size: [2, 4], col: C.fire, add: true, g: -120, drag: 2 });
-      embers(fx, x, y, C.fire, 20);
+      cut(fx, x, y, 0.3 * Math.PI, { r: 40, span: 2.1, w: 11, ...FIRE, life: 0.4 });
+      alongArc(x, y, 0.3 * Math.PI, 40, 2.1, 6, (px, py) => embers(fx, px, py, C.fire, 5));
+      fx.glow(x, y, 30, 0.35, 'rgba(255,130,30,1)', 1.8);
       S.play('burn');
     },
   }),
-  scythe: blade({
-    spin: 22, arc: 20, col: C.dark, scale: 1.3,
-    trail: { shape: 'smoke', col: ['#4a2a8a', '#2a1a4a'], speed: [2, 12], life: [0.3, 0.5], size: [2, 4], grow: 1.8, alpha: 0.5 },
+  scythe: melee({                                        // a vast reaping sweep, dragging shadow behind it
+    travel: 0.2, glint: '#c8a0ff',
     hit(fx, x, y, S, I) {
-      fx.slash(x, y, 2.4, 40, 0.4, '#c8a0ff', 4);
-      fx.burst(x, y, { n: 16, speed: [20, 80], life: [0.6, 1.1], size: [3, 6], grow: 1.8, shape: 'smoke', col: C.dark, g: -40, alpha: 0.7 });
+      cut(fx, x, y, Math.PI, { r: 72, span: 1.35, w: 13, ...DARK, life: 0.45, bend: -1 });
+      alongArc(x, y, Math.PI, 72, 1.35, 6, (px, py) => puff(fx, px, py, C.dark, 2, [3, 6]), -1);
       if (I.execute) {
-        fx.flash('#6a2aa8', 0.35, 0.55); fx.ring(x, y, 6, 70, 0.5, '#c8a0ff', 4);
-        fx.burst(x, y, { n: 20, speed: [30, 120], life: [0.8, 1.4], size: [1.5, 3], shape: 'star', col: C.dark, add: true, g: -50 });
+        cut(fx, x, y + 6, 0, { r: 72, span: 1.35, w: 13, ...DARK, life: 0.45, delay: 0.14, bend: -1 });
+        later(0.14, () => {
+          fx.flash('#6a2aa8', 0.35, 0.55); fx.ring(x, y, 6, 70 * SZ, 0.5, '#c8a0ff', 4);
+          fx.burst(x, y, { n: 20, speed: [30, 120], life: [0.8, 1.4], size: [1.5, 3], shape: 'star', col: C.dark, add: true, g: -50 });
+        });
         S.play('reap');
       } else S.play('scythe');
     },
   }),
-  dawnblade: blade({
-    col: C.holy, head: { r: 9, col: 'rgba(140,210,255,0.7)' },
+  dawnblade: melee({                                     // a cross of dawn light, then its rays
+    glint: '#c8f0ff',
     hit(fx, x, y, S, I) {
-      SLASHES(fx, x, y, 2, C.holy, 34, 4);
-      sparks(fx, x, y, C.holy, 20);
-      stars(fx, x, y, ['#ffe84a', '#fff6c0'], 6);
+      cut(fx, x, y, Math.PI / 2, { r: 80, span: 0.75, w: 8, ...HOLY, life: 0.4 });
+      cut(fx, x, y, 0, { r: 80, span: 0.75, w: 8, ...HOLY, life: 0.4, delay: 0.08 });
+      later(0.12, () => {
+        for (let i = 0; i < 8; i++) fx.beam(x, y, x + Math.cos(i * TAU / 8 + 0.4) * 30 * SZ, y + Math.sin(i * TAU / 8 + 0.4) * 30 * SZ, 0.26, '#8ad8ff', 1.2);
+        stars(fx, x, y, ['#ffe84a', '#fff6c0'], 8);
+        if (I.beam) { fx.beam(x, y - 160 * SZ, x, y + 40 * SZ, 0.5, '#8ad8ff', 10); fx.flash('#c8f0ff', 0.2, 0.4); }
+      });
       S.play(I.beam ? 'beam' : 'holy');
     },
-    launchSfx: 'whoosh',
   }),
-  slabcleaver: blade({
-    spin: 8, arc: 24, scale: 1.5, travel: 0.3,
+  slabcleaver: melee({                                   // one enormous cut (Overdrive: three)
+    travel: 0.2,
     hit(fx, x, y, S, I) {
       if (I.limit) {
         fx.flash('#ffffff', 0.3, 0.7);
-        for (let i = 0; i < 3; i++) fx.slash(x, y, 0.4 + i * 2.1, 60, 0.5, pick(['#ffffff', '#ffd08a', '#ff8a3a']), 7);
-        fx.ring(x, y, 8, 90, 0.5, '#ffb04a', 5);
-        fx.burst(x, y, { n: 40, speed: [100, 300], life: [0.4, 0.9], shape: 'spark', col: C.orange, add: true, drag: 2.5, len: 0.05, w: 2 });
+        const cols = [STEEL, FIRE, GOLD];
+        for (let i = 0; i < 3; i++) cut(fx, x, y, 0.2 * Math.PI + i * 0.7, { r: 70, span: 1.8, w: 18, ...cols[i], life: 0.45, delay: i * 0.08, bend: i % 2 ? -1 : 1 });
+        later(0.18, () => {
+          fx.ring(x, y, 8, 90 * SZ, 0.5, '#ffb04a', 5);
+          fx.burst(x, y, { n: 40, speed: [100, 300], life: [0.4, 0.9], shape: 'spark', col: C.orange, add: true, drag: 2.5, len: 0.05, w: 2 });
+        });
         S.shake(1.4); S.play('limit');
       } else {
-        fx.slash(x, y, 0.8, 46, 0.35, '#ffffff', 6);
-        sparks(fx, x, y, C.silver, 22, [100, 260]);
+        cut(fx, x, y, 0.3 * Math.PI, { r: 62, span: 1.9, w: 18, ...STEEL, life: 0.4 });
+        sparks(fx, x, y, C.silver, 22, [100, 260], 0.3 * Math.PI, 0.5);
         S.shake(0.7); S.play('heavy');
       }
     },
   }),
-  wyrmbreaker: blade({
-    spin: 6, arc: 60, scale: 1.7, travel: 0.36, ease: k => k * k,
-    trail: { shape: 'px', col: ['#3a3438', '#5a4c50'], speed: [0, 10], life: [0.3, 0.5], size: [2, 3] },
+  wyrmbreaker: melee({                                   // a dragon-killing cleave that splits the ground
+    travel: 0.24, glint: '#ff8a8a',
     hit(fx, x, y, S, I) {
       fx.flash('#8a1a1a', 0.3, 0.4);
-      fx.slash(x, y, 0.9, 56, 0.4, '#e8d0c8', 8);
-      fx.burst(x, y, { n: 30, speed: [80, 240], life: [0.4, 0.9], size: [2, 4.5], shape: 'shard', col: ['#8a1a1a', '#3a3438', '#c8b8b0'], g: 420, spin: 3 });
-      fx.burst(x, y, { n: 14, speed: [20, 70], life: [0.6, 1.0], size: [4, 8], grow: 2, shape: 'smoke', col: C.smoke, alpha: 0.6 });
+      cut(fx, x, y, 0.55 * Math.PI, { r: 66, span: 1.5, w: 20, ...BLOOD, life: 0.45 });
+      later(0.1, () => {
+        fx.ring(x, y + 22 * SZ, 6, 70 * SZ, 0.45, '#e8d0c8', 4, true, 0.28);
+        fx.burst(x, y, { n: 30, speed: [80, 240], life: [0.4, 0.9], size: [2, 4.5], shape: 'shard', col: ['#8a1a1a', '#3a3438', '#c8b8b0'], g: 420, spin: 3 });
+        fx.burst(x, y, { n: 14, speed: [20, 70], life: [0.6, 1.0], size: [4, 8], grow: 2, shape: 'smoke', col: C.smoke, alpha: 0.6 });
+      });
       S.shake(1.6); S.play('slab');
     },
   }),
-  picklock: blade({
-    spin: 18, arc: 34, col: C.gold, head: { r: 8, col: 'rgba(255,230,120,0.6)' },
-    trail: { shape: 'star', col: ['#fff6c0', '#ffe84a', '#fff'], speed: [4, 20], life: [0.3, 0.5], size: [1, 2], add: true }, rate: 50,
+  picklock: melee({                                      // three tiny precise ticks - and the lock gives
+    travel: 0.12, glint: '#ffe070',
     hit(fx, x, y, S, I) {
-      SLASHES(fx, x, y, 1, C.gold, 30, 4);
-      fx.burst(x, y, { n: 12, speed: [60, 160], life: [0.3, 0.6], size: [1.5, 2.5], shape: 'shard', col: ['#ffd24a', '#fff6c0', '#c89a30'], add: true, drag: 2 });  // tumblers
-      fx.ring(x, y, 3, 16, 0.2, '#ffe070', 2);
-      stars(fx, x, y, ['#fff6c0', '#ffe84a'], 10);
+      for (let i = 0; i < 3; i++) cut(fx, x + R(-6, 6), y + R(-6, 6), R(0, TAU), { r: 12, span: 1.4, w: 3, ...GOLD, life: 0.2, delay: i * 0.05 });
+      later(0.15, () => {
+        fx.burst(x, y, { n: 12, speed: [60, 160], life: [0.3, 0.6], size: [1.5, 2.5], shape: 'shard', col: ['#ffd24a', '#fff6c0', '#c89a30'], add: true, drag: 2 });
+        fx.ring(x, y, 3, 16, 0.2, '#ffe070', 2);
+        stars(fx, x, y, ['#fff6c0', '#ffe84a'], 10);
+      });
       S.play('picklock');
     },
   }),
-  whisperblade: {
-    target: 'enemy', travel: 0.14,
-    launch(fx, a, b, S) {
-      S.play('whoosh');
-      fx.shot({ from: a, to: b, dur: 0.14, arc: 0, img: S.icon, point: Math.PI / 4, scale: 1.3,
-                trail: { shape: 'spark', col: C.silver, speed: [1, 4], life: [0.2, 0.3], add: true, len: 0.1 }, rate: 150 });
-    },
-    impact(fx, x, y, S, I) {
-      for (let i = 0; i < 3; i++) setTimeout(() => {
-        fx.slash(x + R(-10, 10), y + R(-10, 10), R(0, TAU), 36, 0.28, '#ffffff', 3);
-        sparks(fx, x, y, C.silver, 8, [120, 240]);
-        S.play('shing');
-      }, i * 90);
-      fx.burst(x, y, { n: 16, speed: [40, 110], life: [0.9, 1.5], size: [1.5, 2.5], shape: 'leaf', col: ['#c8f0d8', '#8ad8b0', '#ffffff'], g: 20, spin: 3, drag: 1.5 });  // a gust of leaves
-    },
-  },
-  powder_saber: blade({
+  whisperblade: melee({                                  // iaido: three hairline cuts appear... then open
+    travel: 0.1,
     hit(fx, x, y, S, I) {
-      SLASHES(fx, x, y, 1, C.steel, 32, 4);
+      const as = [R(-0.5, 0.5), R(0.9, 1.4), R(1.9, 2.5)];
+      as.forEach((a, i) => {
+        thrust(fx, x + R(-6, 6), y + R(-6, 6), { rot: a, len: 42, back: 42, w: 2, col: '#8ab8d0', edge: '#e8f4ff', core: '#ffffff', life: 0.5, delay: i * 0.04, sweep: 0.15 });
+        later(i * 0.04, () => S.play('shing'));
+      });
+      later(0.28, () => {
+        fx.glow(x, y, 26, 0.3, 'rgba(220,240,255,1)', 1.5);
+        as.forEach(a => sparks(fx, x, y, C.silver, 8, [120, 260], a, 0.3));
+        fx.burst(x, y, { n: 16, speed: [40, 110], life: [0.9, 1.5], size: [1.5, 2.5], shape: 'leaf', col: ['#c8f0d8', '#8ad8b0', '#ffffff'], g: 20, spin: 3, drag: 1.5 });
+      });
+    },
+  }),
+  powder_saber: melee({                                  // a cut - and the powder in the fuller goes off
+    hit(fx, x, y, S, I) {
+      cut(fx, x, y, 0.3 * Math.PI, { r: 36, span: 1.9, w: 8, ...STEEL });
       if (I.trigger) {
-        fx.glow(x, y, 22, 0.18, 'rgba(255,220,120,1)', 1.3);
-        fx.burst(x, y, { n: 18, speed: [120, 300], life: [0.15, 0.3], shape: 'spark', col: ['#fff', '#ffe08a'], add: true, len: 0.04 });
-        puff(fx, x, y, C.smoke, 10);
+        alongArc(x, y, 0.3 * Math.PI, 36, 1.9, 5, (px, py, k) => later(0.05 + k * 0.03, () => {
+          fx.glow(px, py, 12, 0.18, 'rgba(255,220,120,1)', 1.3);
+          fx.burst(px, py, { n: 6, speed: [120, 260], life: [0.15, 0.3], shape: 'spark', col: ['#fff', '#ffe08a'], add: true, len: 0.04 });
+        }));
+        later(0.2, () => puff(fx, x, y, C.smoke, 10));
         S.shake(0.6); S.play('powder');
-      } else { sparks(fx, x, y, C.steel, 14); S.play('slash2'); }
+      } else { sparks(fx, x, y, C.steel, 14, [80, 200], 0.3 * Math.PI, 0.5); S.play('slash2'); }
     },
   }),
   skull_cursed: blade({

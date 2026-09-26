@@ -3,9 +3,9 @@
 //
 // Grid: cell (x, y) is centred at world (x*CELL, 0, y*CELL); y grows toward +Z.
 // Directions: 0 = north (-Z), 1 = east (+X), 2 = south (+Z), 3 = west (-X).
-import { rng, trs } from './math.js?v=20260926035806';
-import { Batcher } from './gl.js?v=20260926035806';
-import { BIOMES, ELITES, BOSSES, ROOMS, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926035806';
+import { rng, trs } from './math.js?v=20260926044644';
+import { Batcher } from './gl.js?v=20260926044644';
+import { BIOMES, ELITES, BOSSES, ROOMS, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926044644';
 
 export const CELL = 2.0;
 export const WALL_H = 2.6;

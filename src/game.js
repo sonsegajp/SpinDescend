@@ -1,19 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926035806';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926035806';
+import { gl } from './gl.js?v=20260926044644';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926044644';
 const BOSS_SCALE = 2.1;
-import { Renderer, invert } from './render.js?v=20260926035806';
-import { SlotMachine } from './slot.js?v=20260926035806';
-import { CardView } from './cards.js?v=20260926035806';
-import { UI, SERIF } from './ui.js?v=20260926035806';
-import { Animator } from './anim.js?v=20260926035806';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926035806';
-import { is } from './input.js?v=20260926035806';
-import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926035806';
+import { Renderer, invert } from './render.js?v=20260926044644';
+import { SlotMachine } from './slot.js?v=20260926044644';
+import { CardView } from './cards.js?v=20260926044644';
+import { UI, SERIF } from './ui.js?v=20260926044644';
+import { Animator } from './anim.js?v=20260926044644';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926044644';
+import { is } from './input.js?v=20260926044644';
+import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926044644';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, ROOMS, ADAPT, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
          BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926035806';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926044644';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -22,6 +22,7 @@ function loadProgress() {
 function saveProgress(p) { try { localStorage.setItem('sd_progress', JSON.stringify(p)); } catch (e) { /* storage blocked */ } }
 
 const EYE = 0.84, BACK = 0.8, PITCH = -0.19, FOV = 58 * Math.PI / 180;
+const FX_PIXEL = 2;                  // effects drawn at half the world's resolution: chunky PS1 pixels
 const SHOP_YAW = 0.34;                                            // shop: camera turns so the merchant stands right of the cards
 const ENEMY_SCALE = 1.18;
 const dirYaw = d => Math.atan2(DX[d], DY[d]);
@@ -1374,6 +1375,7 @@ export class Game {
     if (!rec || !this.combat) return;
     if (I.miss) { this.fxEvent('miss', ...I.enemy); return; }
     const [tx, ty] = this.fxTarget(rec.target, ax, ay);
+    if (rec.target === 'enemy') I.size = clamp((this.enemyScreen(0)[1] - this.enemyScreen(1)[1]) / 110, 0.8, 2.2);   // strokes fit the foe
     rec.impact(this.fx, tx, ty, this.fxCtx(id), I);
     if (I.crit && rec.target === 'enemy') this.fxEvent('crit', tx, ty);
     if (I.stun && id !== 'hammer') this.fxEvent('stun', ...this.enemyScreen(1.0));
@@ -2480,7 +2482,7 @@ export class Game {
       this.fx.draw(g, W, H, (x, y, z) => {
         const [sx, sy, w] = this.project(x, y, z);
         return w > 0.05 ? [sx, sy, H / 2 / (w * tanH)] : null;
-      });
+      }, FX_PIXEL);
       U.drawFloats(now);
     }
     if (this.state === 'dead' || this.state === 'won') this.drawEnd(now, ptr);
