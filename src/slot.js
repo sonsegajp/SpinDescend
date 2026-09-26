@@ -4,9 +4,9 @@
 // Reels are cylinders with 8 symbol slots around them; their texture is a
 // canvas strip redrawn whenever the slots change. Rotation theta = k * PI/4
 // shows slot k in the top row and slot k-1 in the bottom row.
-import { gl, updateTex } from './gl.js?v=20260925233606';
-import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925233606';
-import { SYMBOLS } from './data.js?v=20260925233606';
+import { gl, updateTex } from './gl.js?v=20260925234051';
+import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925234051';
+import { SYMBOLS } from './data.js?v=20260925234051';
 
 const SLOTS = 8, CELLPX = 96;
 const STEP = Math.PI * 2 / SLOTS;
@@ -42,8 +42,8 @@ export class SlotMachine {
 
   // each class plays its own machine: the stone one, or the Mage's arcane altar
   setTheme(theme) {
-    const m = theme === 'arcane' ? this.assets.models.slot_machine_arcane : null;
-    this.theme = m ? 'arcane' : 'classic';
+    const m = { arcane: this.assets.models.slot_machine_arcane, knight: this.assets.models.slot_machine_knight }[theme] || null;
+    this.theme = m ? theme : 'classic';
     this.model = m || this.assets.models.slot_machine;
     this.reels.forEach(r => { r.dirty = true; });
     this.drawnState = '';
