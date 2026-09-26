@@ -4,9 +4,9 @@
 // Reels are cylinders with 8 symbol slots around them; their texture is a
 // canvas strip redrawn whenever the slots change. Rotation theta = k * PI/4
 // shows slot k in the top row and slot k-1 in the bottom row.
-import { gl, updateTex } from './gl.js?v=20260925234051';
-import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925234051';
-import { SYMBOLS } from './data.js?v=20260925234051';
+import { gl, updateTex } from './gl.js?v=20260925234300';
+import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925234300';
+import { SYMBOLS } from './data.js?v=20260925234300';
 
 const SLOTS = 8, CELLPX = 96;
 const STEP = Math.PI * 2 / SLOTS;
@@ -42,7 +42,8 @@ export class SlotMachine {
 
   // each class plays its own machine: the stone one, or the Mage's arcane altar
   setTheme(theme) {
-    const m = { arcane: this.assets.models.slot_machine_arcane, knight: this.assets.models.slot_machine_knight }[theme] || null;
+    const m = { arcane: this.assets.models.slot_machine_arcane, knight: this.assets.models.slot_machine_knight,
+                forest: this.assets.models.slot_machine_forest }[theme] || null;
     this.theme = m ? theme : 'classic';
     this.model = m || this.assets.models.slot_machine;
     this.reels.forEach(r => { r.dirty = true; });
@@ -252,13 +253,15 @@ export class SlotMachine {
     {
       const c = this.spinFace.canvas.getContext('2d');
       const on = s.spinEnabled, arc = this.theme === 'arcane';
-      c.fillStyle = arc ? (on ? (s.spinHover ? '#9a4ad8' : '#7a36b8') : '#3a2450') : on ? (s.spinHover ? '#c8303a' : '#b02630') : '#5a2a2c';
+      const fo = this.theme === 'forest';
+      c.fillStyle = arc ? (on ? (s.spinHover ? '#9a4ad8' : '#7a36b8') : '#3a2450') : fo ? (on ? (s.spinHover ? '#4aa846' : '#3a8a36') : '#2a3a26')
+        : on ? (s.spinHover ? '#c8303a' : '#b02630') : '#5a2a2c';
       c.fillRect(0, 0, 192, 108);
       c.fillStyle = on ? (arc ? 'rgba(220,190,255,0.2)' : 'rgba(255,190,190,0.18)') : 'rgba(0,0,0,0.1)';
       c.fillRect(0, 0, 192, 20);
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.font = `bold ${s.spinLabel.length > 5 ? 36 : 52}px ${FONT}`;
-      c.lineWidth = 7; c.strokeStyle = arc ? '#1c0a30' : '#3a0c10';
+      c.lineWidth = 7; c.strokeStyle = arc ? '#1c0a30' : fo ? '#0c2a0e' : '#3a0c10';
       c.strokeText(s.spinLabel, 96, 58);
       c.fillStyle = on ? '#f6ece0' : '#a08880';
       c.fillText(s.spinLabel, 96, 58);

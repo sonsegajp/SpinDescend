@@ -1,17 +1,17 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260925234051';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925234051';
-import { Renderer, invert } from './render.js?v=20260925234051';
-import { SlotMachine } from './slot.js?v=20260925234051';
-import { CardView } from './cards.js?v=20260925234051';
-import { UI, SERIF } from './ui.js?v=20260925234051';
-import { Animator } from './anim.js?v=20260925234051';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260925234051';
-import { is } from './input.js?v=20260925234051';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260925234051';
+import { gl } from './gl.js?v=20260925234300';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925234300';
+import { Renderer, invert } from './render.js?v=20260925234300';
+import { SlotMachine } from './slot.js?v=20260925234300';
+import { CardView } from './cards.js?v=20260925234300';
+import { UI, SERIF } from './ui.js?v=20260925234300';
+import { Animator } from './anim.js?v=20260925234300';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260925234300';
+import { is } from './input.js?v=20260925234300';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260925234300';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925234051';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925234300';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -192,7 +192,7 @@ export class Game {
     this.runSeed = this.fixedSeed ?? ((Math.random() * 1e9) | 0);
     this.slot.state.hp = K.hp; this.slot.state.maxHp = K.hp; this.slot.state.gold = 0;
     this.slot.summonPods(false);
-    this.slot.setTheme({ mage: 'arcane', knight: 'knight' }[this.cls] || 'classic');
+    this.slot.setTheme({ mage: 'arcane', knight: 'knight', rogue: 'forest' }[this.cls] || 'classic');
     this.slot.setStatic([[K.bag[0], 'shield', 'potion'], ['coin', 'skull', 'chest']]);
     this.loadFloor(1, this.runSeed + 1);
     this.fadeIn();

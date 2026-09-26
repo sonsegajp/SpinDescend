@@ -1,5 +1,5 @@
 // gl.js - WebGL2 plumbing: shaders, textures, the .sdm model format, static batching.
-import { ident, mul, translate, rotX, rotY, rotZ, scale } from './math.js?v=20260925234051';
+import { ident, mul, translate, rotX, rotY, rotZ, scale } from './math.js?v=20260925234300';
 
 export let gl = null;
 
