@@ -2,8 +2,8 @@
 // fog, banded lighting for the pixel-art look, sky, and model/batch drawing.
 // PS1 look (world pass only): vertices snap to a coarse screen grid (wobble),
 // textures blend toward affine mapping (warp) and colour is dithered to 15 bit.
-import { gl, program, texFromImage, solidTex } from './gl.js?v=20260926072430';
-import { ident, mul } from './math.js?v=20260926072430';
+import { gl, program, texFromImage, solidTex } from './gl.js?v=20260926072615';
+import { ident, mul } from './math.js?v=20260926072615';
 
 const VS = `#version 300 es
 layout(location=0) in vec3 aPos;

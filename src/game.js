@@ -1,19 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926072430';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926072430';
+import { gl } from './gl.js?v=20260926072615';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926072615';
 const BOSS_SCALE = 2.1;
-import { Renderer, invert } from './render.js?v=20260926072430';
-import { SlotMachine } from './slot.js?v=20260926072430';
-import { CardView } from './cards.js?v=20260926072430';
-import { UI, SERIF } from './ui.js?v=20260926072430';
-import { Animator } from './anim.js?v=20260926072430';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926072430';
-import { is } from './input.js?v=20260926072430';
-import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926072430';
+import { Renderer, invert } from './render.js?v=20260926072615';
+import { SlotMachine } from './slot.js?v=20260926072615';
+import { CardView } from './cards.js?v=20260926072615';
+import { UI, SERIF } from './ui.js?v=20260926072615';
+import { Animator } from './anim.js?v=20260926072615';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926072615';
+import { is } from './input.js?v=20260926072615';
+import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926072615';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, ROOMS, ADAPT, AFFIXES, HEAT, ACHIEVEMENTS, UPDATE, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
          BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926072430';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926072615';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {

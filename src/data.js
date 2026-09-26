@@ -608,7 +608,7 @@ export const BOSSES = {
              atk: 3, size: 0.8, abilities: ['spores', 'regrow'], gold: [28, 38] },
   library: { kind: 'mimic_colossus', tex: 'bake_mimic_colossus_tome', name: 'The Grimoire Colossus', title: 'Bound. Ravenous. Unwritten.',
              hp: 46, atk: 4, size: 0.95, abilities: ['curse', 'devour'], gold: [34, 46] },
-  foundry: { kind: 'gravemaw', tex: 'bake_gravemaw_brass', name: 'The Brass Colossus', title: 'Forged. Tireless. Unstoppable.',
+  foundry: { kind: 'gravemaw', tex: 'bake_gravemaw_brass', tint: [1.0, 0.78, 0.5], name: 'The Brass Colossus', title: 'Forged. Tireless. Unstoppable.',
              hp: 48, atk: 4, armor: 1, size: 0.9, abilities: ['slam', 'burn'], gold: [34, 46] },
   vault:   { kind: 'mimic_colossus', name: 'The Mimic Colossus', title: 'Deceptive. Gluttonous. Vicious.', hp: 44, atk: 4, size: 0.95,
              abilities: ['greed', 'devour'], gold: [40, 55] },
