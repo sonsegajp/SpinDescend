@@ -3,9 +3,9 @@
 //
 // Grid: cell (x, y) is centred at world (x*CELL, 0, y*CELL); y grows toward +Z.
 // Directions: 0 = north (-Z), 1 = east (+X), 2 = south (+Z), 3 = west (-X).
-import { rng, trs } from './math.js?v=20260926044644';
-import { Batcher } from './gl.js?v=20260926044644';
-import { BIOMES, ELITES, BOSSES, ROOMS, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926044644';
+import { rng, trs } from './math.js?v=20260926072430';
+import { Batcher } from './gl.js?v=20260926072430';
+import { BIOMES, ELITES, BOSSES, ROOMS, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926072430';
 
 export const CELL = 2.0;
 export const WALL_H = 2.6;
@@ -287,7 +287,7 @@ export function build(level, models) {
   const blocked = new Set(level.entities.map(e => `${e.x},${e.y}`));
 
   // weighted variant lists (plain pieces most often, the painted set-pieces now and then)
-  const KIT = {
+  const KITS = {
     dungeon: { walls: ['dun_wall0', 'dun_wall0', 'dun_wall0', 'dun_wall1', 'dun_wall1', 'dun_wall2', 'dun_wall3'],
                floors: ['dun_floor0', 'dun_floor0', 'dun_floor0', 'dun_floor1', 'dun_floor1', 'dun_floor2'], ceil: 'dun_ceil',
                pillar: 'dun_pillar' },
@@ -303,7 +303,14 @@ export function build(level, models) {
               ceil: 'grotto_ceil', spin: true },
     vault: { walls: ['vault_wall0', 'vault_wall0', 'vault_wall1', 'vault_wall2', 'vault_wall2'], floors: ['vault_floor0', 'vault_floor0', 'vault_floor1'],
              ceil: 'vault_ceil', pillar: 'vault_pillar' },
-  }[biome];
+    library: { walls: ['library_wall0', 'library_wall0', 'library_wall0', 'library_wall1', 'library_wall2'],
+               floors: ['library_floor0', 'library_floor0', 'library_floor1'], ceil: 'library_ceil' },
+    foundry: { walls: ['foundry_wall0', 'foundry_wall0', 'foundry_wall1', 'foundry_wall2'], floors: ['foundry_floor0', 'foundry_floor0', 'foundry_floor1'],
+               ceil: 'foundry_ceil' },
+  };
+  // a biome whose kit pieces haven't shipped borrows the dungeon's
+  const kitOk = K => K && [...K.walls, ...K.floors, ...(K.ceil ? [K.ceil] : []), ...(K.pillar ? [K.pillar] : [])].every(m => models[m]);
+  const KIT = kitOk(KITS[biome]) ? KITS[biome] : KITS.dungeon;
   const walls = KIT.walls, floors = KIT.floors;
   // corner props: the model's corner is its origin with the room toward model +x/+y
   const cornerRot = (ix, iz) => (ix > 0 ? (iz < 0 ? 0 : 3 * Math.PI / 2) : (iz < 0 ? Math.PI / 2 : Math.PI));
@@ -492,10 +499,12 @@ export function build(level, models) {
       }
     }
   }
-  // ---- the grotto's glowing mushrooms and roots, the vault's gold and chandeliers
+  // ---- the grotto's glowing mushrooms and roots, the vault's gold and chandeliers, the library's candles and
+  // books, the foundry's gears and vents
+  const spinners = [];
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      if (!at(x, y) || (biome !== 'grotto' && biome !== 'vault')) continue;
+      if (!at(x, y) || !['grotto', 'vault', 'library', 'foundry'].includes(biome) || KIT !== KITS[biome]) continue;
       const [cx, , cz] = cellPos(x, y);
       const busy = blocked.has(`${x},${y}`) || (x === level.stairs.x && y === level.stairs.y);
       const wallDirs = [0, 1, 2, 3].filter(d => !at(x + DX[d], y + DY[d]));
@@ -512,6 +521,32 @@ export function build(level, models) {
           if (lit) lights.push({ pos: [px, 0.7, pz], col: R.chance(0.5) ? [0.3, 1.1, 0.95] : [0.8, 0.45, 1.2], radius: 4.4, flicker: 0 });
         }
         if (R.chance(0.22)) put('roots', cx + (R() - 0.5) * 0.6, 0, cz + (R() - 0.5) * 0.6, R() * 6);
+      }
+      if (biome === 'library') {
+        if (!busy && lit && wallDirs.length && models.candelabra) {                  // candles stand against a shelf
+          const d = R.pick(wallDirs);
+          const px = cx + DX[d] * 0.62, pz = cz + DY[d] * 0.62;
+          put('candelabra', px, 0, pz, R() * 6);
+          lights.push({ pos: [px, 1.5, pz], col: [1.5, 1.05, 0.55], radius: 4.8, flicker: R() * 10 });
+        }
+        if (!busy && corners.length && models.book_pile && R.chance(0.35)) {
+          const [d1, d2] = R.pick(corners);
+          put('book_pile', cx + (DX[d1] + DX[d2]) * 0.55, 0, cz + (DY[d1] + DY[d2]) * 0.55, R() * 6, 0.8 + R() * 0.3);
+        }
+        if (models.ink_puddle && R.chance(0.08)) put('ink_puddle', cx + (R() - 0.5) * 0.8, 0.005, cz + (R() - 0.5) * 0.8, R() * 6);
+      }
+      if (biome === 'foundry') {
+        if (!busy && wallDirs.length === 3 && models.gear_stand) {                 // a dead end holds a turning gear
+          const back = [0, 1, 2, 3].find(k => at(x + DX[k], y + DY[k]));
+          const w = (back + 2) % 4;
+          spinners.push({ model: 'gear_stand', x: cx + DX[w] * 0.5, z: cz + DY[w] * 0.5, ry: wallRot(w) });
+        }
+        if (!busy && models.steam_vent && R.chance(0.07)) put('steam_vent', cx, 0, cz, R.int(0, 3) * Math.PI / 2);
+        for (const [d1, d2] of corners) {                                           // pipes run up the inside corners
+          const kx = DX[d1] + DX[d2], kz = DY[d1] + DY[d2];
+          if (models.pipe_corner && R.chance(0.3)) put('pipe_corner', cx + kx * (CELL / 2 - 0.02), 0, cz + kz * (CELL / 2 - 0.02), cornerRot(-kx, -kz));
+        }
+        if (lit) lights.push({ pos: [cx, 0.35, cz], col: [1.5, 0.7, 0.25], radius: 4.0, flicker: R() * 10 });   // furnace light from below the grates
       }
       if (biome === 'vault') {
         if (!busy && corners.length && R.chance(0.3)) {
@@ -559,5 +594,5 @@ export function build(level, models) {
       if (d !== (S.d + 2) % 4) alcoveBat.add(models[R.pick(walls)], trs(ax + DX[d] * CELL / 2, 0, az + DY[d] * CELL / 2, wallRot(d), 0, 0, 1));
     }
   }
-  return { batches: bat.build(), lights, crack: crackBat.build(), alcove: alcoveBat.build() };
+  return { batches: bat.build(), lights, crack: crackBat.build(), alcove: alcoveBat.build(), spinners };
 }

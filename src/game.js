@@ -1,19 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926044644';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926044644';
+import { gl } from './gl.js?v=20260926072430';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926072430';
 const BOSS_SCALE = 2.1;
-import { Renderer, invert } from './render.js?v=20260926044644';
-import { SlotMachine } from './slot.js?v=20260926044644';
-import { CardView } from './cards.js?v=20260926044644';
-import { UI, SERIF } from './ui.js?v=20260926044644';
-import { Animator } from './anim.js?v=20260926044644';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926044644';
-import { is } from './input.js?v=20260926044644';
-import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926044644';
-import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, ROOMS, ADAPT, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
+import { Renderer, invert } from './render.js?v=20260926072430';
+import { SlotMachine } from './slot.js?v=20260926072430';
+import { CardView } from './cards.js?v=20260926072430';
+import { UI, SERIF } from './ui.js?v=20260926072430';
+import { Animator } from './anim.js?v=20260926072430';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926072430';
+import { is } from './input.js?v=20260926072430';
+import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926072430';
+import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, ROOMS, ADAPT, AFFIXES, HEAT, ACHIEVEMENTS, UPDATE, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
          BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926044644';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926072430';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -72,6 +72,7 @@ export class Game {
     if (CLASSES[q.get('class')]) { this.cls = q.get('class'); this.titleKnight = null; }  // ?class=rogue|mage
     if (q.has('pods')) this.forcePods = true;
     if (OMENS[q.get('omen')]) this.forceOmen = q.get('omen');                            // ?omen=greed: skip the choice                                            // ?pods: the Rogue summons every spin
+    this.titlePanel = q.get('panel') || null;                    // test hooks: no update notes over the shot (?panel=news|ach)
     if (q.get('model') && this.a.models[q.get('model')]) {             // ?title&model=name&yaw=deg: show any model on the plinth
       this.viewModel = q.get('model');
       this.viewYaw = parseFloat(q.get('yaw') || '0') * Math.PI / 180;
@@ -195,6 +196,12 @@ export class Game {
 
   toTitle() {
     this.state = 'title';
+    this.heat = Math.min(this.progress.heatSel || 0, this.progress.heatMax || 0);
+    if (this.progress.seen !== UPDATE.id) {               // a new update: its notes open once
+      this.titlePanel = 'news';
+      this.progress.seen = UPDATE.id;
+      saveProgress(this.progress);
+    }
     this.titleKnight = this.viewModel ? this.titleKnight : null;
     this.menuFocus = 0;
     this.loadFloor(1, 1234567, true);
@@ -216,6 +223,8 @@ export class Game {
     this.slot.summonPods(false);
     this.slot.setTheme({ mage: 'arcane', knight: 'knight', rogue: 'forest' }[this.cls] || 'classic');
     this.slot.setStatic([[K.bag[0], 'shield', 'potion'], ['coin', 'skull', 'chest']]);
+    Object.assign(this.player, { heat: this.heat || 0, spent: 0, blasts: 0, clockwork: 0, soulKills: 0 });
+    if (this.player.heat >= 5) this.player.bag.push('skull');
     this.player.base = this.buildPower();
     this.loadFloor(1, this.runSeed + 1);
     this.fadeIn();
@@ -289,7 +298,7 @@ export class Game {
     if (k === 'wild') P.bag.push('wild');
     this.slot.state.hp = P.hp; this.slot.state.maxHp = P.maxHp;
     // the floor was generated before the choice: the Swarm and the Hoard reshape it now
-    if (k === 'swarm' || k === 'hoard') this.loadFloor(1, this.runSeed + 1);
+    if (k === 'swarm' || k === 'hoard' || k === 'titans') this.loadFloor(1, this.runSeed + 1);
     for (const e of this.entities) if (e.type === 'enemy') this.omenFoe(e);
     return O;
   }
@@ -339,6 +348,8 @@ export class Game {
                                          bossReady: this.bossReady(biomeKey),
                                          secret: !title && P && (P.bag.includes('bomb') || P.relics.has('demolition')),
                                          room: !title });
+    for (const e of this.level.entities)                   // a room whose set-piece hasn't shipped falls back to the fountain
+      if (e.type === 'room' && !this.a.models[ROOMS[e.kind].model]) e.kind = 'fountain';
     this.biome = BIOMES[this.level.biome];
     this.floorScale = title ? null : this.scaling();
     if (this.floorScale && (this.floorScale.hp >= 1.15 || this.floorScale.atk >= 1))
@@ -348,6 +359,7 @@ export class Game {
     this.lights = built.lights;
     this.crack = built.crack;
     this.alcove = built.alcove;
+    this.spinners = built.spinners || [];
     this.surface = null;
     this.entities = this.level.entities.map(e => this.spawn(e));
     for (const e of this.entities) if (e.type === 'enemy') this.omenFoe(e);
@@ -360,6 +372,13 @@ export class Game {
     this.reveal();
     if (P && P.relics.has('eye_of_depths'))
       for (let y = 0; y < this.level.H; y++) for (let x = 0; x < this.level.W; x++) this.explored.add(`${x},${y}`);
+    if (P && !title && P.relics.has('star_map')) {
+      this.explored.add(`${this.level.stairs.x},${this.level.stairs.y}`);
+      for (const e of this.entities) if (e.type === 'room') this.explored.add(`${e.x},${e.y}`);
+    }
+    if (P && !title && floor > 1 && P.relics.has('tidal_charm'))
+      this.later(1.2, () => { this.heal(4, 0, 0); this.ui.toast('The Tidal Charm washes over you (+4 HP)', this.time, '#6ae0d8', 2.4); });
+    if (P && !title && floor >= 8) this.achieve('deep_diver');
     this.combat = null;
     this.state = title ? 'title' : 'explore';
     this.audio.ambience(this.level.biome);
@@ -368,6 +387,8 @@ export class Game {
 
   spawn(e) {
     if (e.type === 'enemy') {
+      const P = this.player;
+      if (P && P.omen === 'titans' && !e.boss) e = { ...e, elite: true };        // every foe an elite
       let def = ENEMIES[e.kind];
       if (e.boss) {
         const B = BOSSES[this.level.biome];
@@ -375,7 +396,8 @@ export class Game {
       }
       const mult = 1 + (this.floor - 1) * 0.1;             // 16 floors: 4 biomes x 4 levels
       const sc = this.floorScale || { hp: 1, atk: 0, lean: null };  // ...and to the player's own build
-      const hp = Math.round(def.hp * mult * sc.hp * (e.elite ? 1.7 : 1));
+      const heat = P ? P.heat || 0 : 0;
+      const hp = Math.round(def.hp * mult * sc.hp * (e.elite ? 1.7 : 1) * (heat >= 1 ? 1.15 : 1));
       const ent = { ...e, def, hp, maxHp: hp, atk: def.atk + Math.floor((this.floor - 1) / 5) + (e.elite ? 1 : 0) + sc.atk,
                poison: 0, burn: 0, stunTurns: 0, alive: true, flash: 0, advance: 0, turn: 0, fadeOut: 0, shell: 0,
                phase: Math.random() * 6, scale: ENEMY_SCALE * (e.boss ? BOSS_SCALE * (def.size || 1) : e.elite ? 1.3 : 1) };
@@ -383,6 +405,15 @@ export class Game {
       if (sc.lean && this.floor >= 3 && (e.boss || e.elite || this.forceAdapt || Math.random() < 0.35)) {
         ent.adapt = sc.lean;
         if (sc.lean === 'spell') ent.shell = (ent.shell || 0) + 6;
+      }
+      if (e.elite && !e.boss) {                             // elites carry dark gifts
+        const pool = Object.keys(AFFIXES);
+        const n = Math.min(3, (this.floor >= 7 ? 2 : 1) + (heat >= 2 ? 1 : 0));
+        ent.affixes = [];
+        while (ent.affixes.length < n) { const a = pool.splice(Math.floor(Math.random() * pool.length), 1)[0]; ent.affixes.push(a); }
+        if (ent.affixes.includes('armored')) ent.armorX = 2;
+        if (ent.affixes.includes('regen')) ent.regenX = 2;
+        if (ent.affixes.includes('swift')) ent.dodgeX = 0.2;
       }
       return ent;
     }
@@ -507,6 +538,11 @@ export class Game {
       A.play(shows[this.titleShow++ % shows.length], { fade: 0.15 });
       this.titleNext = this.time + 4.2;
     }
+    if (this.titlePanel) {                                // the achievements / what's-new panel is open
+      for (const k of keys) if (is(k, 'cancel') || is(k, 'confirm') || is(k, 'bag')) { this.titlePanel = null; this.audio.play('click'); }
+      for (const c of clicks) if (this.ui.hit(c)) { this.titlePanel = null; this.audio.play('click'); }
+      return;
+    }
     const menu = this.titleMenu();
     this.menuFocus = Math.min(this.menuFocus, menu.length - 1);
     // the Konami code: up up down down left right left right B A unlocks everything
@@ -542,7 +578,9 @@ export class Game {
     this.ui.toast(this.pipe.crt ? 'CRT filter on' : 'CRT filter off', this.time);
   }
 
-  titleMenu() { return this.cls === 'knight' ? ['start', 'skin', 'crt'] : ['start', 'crt']; }
+  titleMenu() {
+    return ['start', ...(this.cls === 'knight' ? ['skin'] : []), ...(this.progress.heatMax ? ['heat'] : []), 'crt', 'ach', 'news'];
+  }
 
   titleAction(id) {
     this.audio.play('click');
@@ -564,6 +602,22 @@ export class Game {
       this.skin = this.skin === 'classic' ? 'paladin' : 'classic';
       this.audio.play('card');
     }
+    if (id === 'heat') {
+      this.heat = (this.heat + 1) % ((this.progress.heatMax || 0) + 1);
+      this.progress.heatSel = this.heat;
+      saveProgress(this.progress);
+      this.audio.play(this.heat ? 'burn' : 'card');
+    }
+    if (id === 'ach' || id === 'news') this.titlePanel = id;
+  }
+
+  // =============================================================== achievements
+  achieve(id) {
+    const A = this.progress.ach || (this.progress.ach = []);
+    if (A.includes(id) || !ACHIEVEMENTS[id]) return;
+    A.push(id);
+    saveProgress(this.progress);
+    this.later(0.5, () => { this.ui.toast(`Achievement unlocked: ${ACHIEVEMENTS[id].name}`, this.time, '#ffd24a', 3.2); this.audio.play('rare_pick'); });
   }
 
   // =============================================================== exploring
@@ -736,7 +790,7 @@ export class Game {
   // =============================================================== the special room of the floor
   roomCost(e) {
     const P = this.player;
-    return { forge: 6 + this.floor, gambler: Math.floor(P.gold / 2) }[e.kind] || 0;
+    return { forge: 6 + this.floor, gambler: Math.floor(P.gold / 2), wishing_well: 10, armory: 12 + this.floor }[e.kind] || 0;
   }
 
   roomNote(e) {
@@ -747,12 +801,16 @@ export class Game {
       blood_altar: P.maxHp > 10 ? 'Costs 4 max HP: take an Epic card or better' : 'You are too frail to bleed for it',
       gambler: c >= 5 ? `Wager ${c} gold (half your purse): double it or lose it` : 'He wants at least 10 gold in your purse',
       scriptorium: P.bag.length > 6 ? 'Burn one symbol from your reels - fewer, stronger spins' : 'Your reels are too thin to burn anything',
+      wishing_well: P.gold >= c ? `${c} gold: make a wish (the well grants most of them)` : `You need ${c} gold to make a wish`,
+      armory: P.gold >= c ? `${c} gold: take your pick of three fine weapons` : `You need ${c} gold for the armory`,
+      cursed_idol: `Take ${20 + this.floor * 3} gold - and two Curses on your reels`,
     }[e.kind];
   }
 
   roomOk(e) {
     const P = this.player, c = this.roomCost(e);
-    return { fountain: true, forge: P.gold >= c, blood_altar: P.maxHp > 10, gambler: c >= 5, scriptorium: P.bag.length > 6 }[e.kind];
+    return { fountain: true, forge: P.gold >= c, blood_altar: P.maxHp > 10, gambler: c >= 5, scriptorium: P.bag.length > 6,
+             wishing_well: P.gold >= c, armory: P.gold >= c, cursed_idol: true }[e.kind];
   }
 
   useRoom(e) {
@@ -810,6 +868,52 @@ export class Game {
           this.ui.toast(`Snake eyes - the gambler pockets your ${bet} gold`, this.time, '#ff8a6a', 2.6);
         }
       });
+    } else if (e.kind === 'wishing_well') {
+      e.used = true;
+      P.gold -= this.roomCost(e); this.slot.state.gold = P.gold;
+      this.audio.play('coin');
+      this.later(0.7, () => {
+        if (Math.random() < 0.7 + Math.min(0.2, P.luck)) {
+          const boons = [
+            ['+2 Max HP', () => { P.maxHp += 2; P.hp += 2; this.slot.state.maxHp = P.maxHp; this.slot.state.hp = P.hp; }],
+            ['+1 Might', () => { P.might++; }], ['+1 Guard', () => { P.guard++; }],
+            ['+10% Luck', () => { P.luck = Math.round((P.luck + 0.1) * 100) / 100; }],
+            ['full health', () => { this.heal(P.maxHp, 0, 0, true); }],
+          ];
+          const [name, fn] = boons[Math.floor(Math.random() * boons.length)];
+          fn();
+          this.fxEvent('splash', cx, cy);
+          this.ui.toast(`Your wish is granted: ${name}!`, this.time, '#8ad8ff', 2.8);
+          this.audio.play('charm');
+        } else {
+          this.ui.toast('The coin sinks without a ripple. Nothing happens.', this.time, '#8a8290', 2.4);
+          this.audio.play('deny');
+        }
+      });
+    } else if (e.kind === 'armory') {
+      e.used = true;
+      P.gold -= this.roomCost(e); this.slot.state.gold = P.gold;
+      this.audio.play('clank');
+      const fam = P.cls === 'mage' ? 'spell' : 'blade';
+      let ids = this.eligibleCards().filter(id => { const c = CARDS[id], sy = c.sym || c.to; return sy && FAMILY[sy] === fam && c.rarity !== 'common'; });
+      for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+      ids = ids.slice(0, 3);
+      if (!ids.length) { P.might++; this.ui.toast('The racks are bare - you drill with them instead (+1 Might)', this.time, '#ffb060', 2.6); }
+      else {
+        this.reward = { ids, source: 'armory' };
+        this.cards.show(ids.map(id => ({ id })), this.time);
+        this.cards.keyFocus = -1;
+        this.state = 'reward';
+      }
+    } else if (e.kind === 'cursed_idol') {
+      e.used = true;
+      const g = 20 + this.floor * 3;
+      this.gainGold(g, cx, cy);
+      P.bag.push('skull', 'skull');
+      this.audio.play('cackle');
+      this.camShake = 0.8;
+      this.fx.flash('#3a8a2a', 0.3, 0.35);
+      this.ui.toast(`The idol's eyes flare - two Curses coil into your reels${P.relics.has('hex_ward') ? ' (your Hex Ward laughs them off)' : ''}`, this.time, '#8aff6a', 3);
     } else if (e.kind === 'scriptorium') {
       this.burnRoom = e;                                     // the bag screen becomes the burning page
       this.bagReturn = 'explore';
@@ -837,6 +941,7 @@ export class Game {
     const S = this.level.secret, P = this.player, L = this.level;
     const free = P.relics.has('demolition');
     if (!free) P.bag.splice(P.bag.indexOf('bomb'), 1);
+    if (++P.blasts >= 3) this.achieve('demolitionist');
     S.open = true;
     L.grid[S.ay * L.W + S.ax] = 1;
     this.lights = this.lights.filter(l => !l.secretWall);
@@ -859,12 +964,14 @@ export class Game {
 
   enterSecret(t) {
     const S = this.level.secret;
+    this.achieve('secret_finder');
     this.surface = { level: this.level, biome: this.biome, stat: this.static, lights: this.lights, crack: this.crack,
-                     alcove: this.alcove, entities: this.entities, explored: this.explored, px: this.px, py: this.py, tele: t };
+                     alcove: this.alcove, spinners: this.spinners, entities: this.entities, explored: this.explored, px: this.px, py: this.py, tele: t };
     this.level = generateSecret(S.kind, this.floor, this.runSeed + this.floor * 131);
     this.biome = BIOMES[this.level.biome];
     const built = build(this.level, this.a.models);
     this.static = built.batches; this.lights = built.lights; this.crack = built.crack; this.alcove = built.alcove;
+    this.spinners = built.spinners || [];
     this.lights.push({ pos: [3 * CELL, 1.4, 1.3 * CELL], col: [1.3, 1.0, 0.6], radius: 5, flicker: 2 },      // the treasure
                      { pos: [3 * CELL, 0.9, 7 * CELL], col: [0.75, 0.45, 1.15], radius: 3.6, flicker: 0 });  // the way back
     this.entities = this.level.entities.map(e => this.spawn(e));
@@ -880,7 +987,7 @@ export class Game {
     const s = this.surface;
     this.surface = null;
     Object.assign(this, { level: s.level, biome: s.biome, static: s.stat, lights: s.lights, crack: s.crack, alcove: s.alcove,
-                          entities: s.entities, explored: s.explored });
+                          spinners: s.spinners, entities: s.entities, explored: s.explored });
     s.tele.gone = true;                                          // the circle burns out behind you
     this.enterCell(s.px, s.py, (this.level.secret.d + 2) % 4);
     this.audio.ambience(this.level.biome);
@@ -923,7 +1030,7 @@ export class Game {
     }
     this.audio.play('chest');
     const gold = (4 + this.floor * 2 + Math.floor(Math.random() * 4)) * (ch.secret ? 2 : 1) + (this.player.relics.has('treasure_map') ? 6 : 0);
-    const n = this.player.relics.has('skeleton_key') ? 4 : 3;
+    const n = this.player.relics.has('skeleton_key') || this.player.omen === 'shadows' ? 4 : 3;
     this.state = 'opening';
     this.later(0.65, () => {
       this.gainGold(gold, this.W / 2, this.H * 0.35);
@@ -960,6 +1067,16 @@ export class Game {
       this.later(1.2, () => this.warnAbility());
     } else this.ui.toast(`${e.elite ? 'Elite ' : ''}${def.name} attacks!`, this.time, '#ff8a6a');
     this.audio.voice(e.kind, 'intro');
+    if (e.affixes) this.later(0.5, () => this.ui.toast(`Elite: ${e.affixes.map(a => AFFIXES[a].name).join(', ')} - ${e.affixes.map(a => AFFIXES[a].desc).join('; ')}`, this.time, '#ffb0a0', 3.4));
+    if (this.player.omen === 'tempest') this.later(1.0, () => {
+      if (this.combat && this.combat.e === e && e.alive) {
+        this.fxEvent('chainStrike', ...this.enemyScreen(0.55));
+        this.damageEnemy(4, true);
+        const P = this.player;
+        P.hp = Math.max(1, P.hp - 1); this.slot.state.hp = P.hp;
+        this.ui.float('-1 storm', ...this.slot.hpAnchor(), '#c8e0ff', this.time, { size: 13 });
+      }
+    });
     if (e.adapt) this.later(0.8, () => this.ui.toast(`It has adapted to your reels - ${ADAPT[e.adapt].name}: ${ADAPT[e.adapt].desc}`, this.time, ADAPT[e.adapt].col, 3));
     const P = this.player;
     if (P.relics.has('cursed_crown') && P.hp > 1) {
@@ -1021,6 +1138,7 @@ export class Game {
     if (!this.playerDots()) return;
     C.phase = 'spinning';
     C.turn++;
+    C.thornBit = false;
     const P = this.player;
     P.armor = P.guard;
     if (P.guard) {
@@ -1098,7 +1216,8 @@ export class Game {
     if (C.locked.length) {
       for (const r of C.locked) {
         const [x, y] = this.slot.reelAnchor(r, 0);
-        this.ui.float(this.slot.lockKind === 'ice' ? 'Frozen!' : 'Stunned!', x, y - 10, this.slot.lockKind === 'ice' ? '#a8e8ff' : '#ffb07a', this.time, { size: 14 });
+        const lk = this.slot.lockKind;
+        this.ui.float(lk === 'ice' ? 'Frozen!' : lk === 'ink' ? 'Inked!' : 'Stunned!', x, y - 10, lk === 'ice' ? '#a8e8ff' : lk === 'ink' ? '#8ab8ff' : '#ffb07a', this.time, { size: 14 });
       }
     }
     C.nextAt = this.time + (C.queue.length > 6 ? 0.35 : 0.15);
@@ -1184,6 +1303,7 @@ export class Game {
 
   applySpecial(b) {
     const C = this.combat, P = this.player, S = SPECIAL_LINE[b.special], e = C.e;
+    this.achieve('jackpot');
     this.slot.highlightCells(b.cells);
     EVENTS.line(this.fx, b.cells.map(([r, c]) => this.slot.reelAnchor(c, r)), '#ffe84a', this.fxCtx(null));
     this.banner(`${S.name}!`, `3 ${SYMBOLS[b.special].name}s in a row: ${S.desc}`, S.color);
@@ -1257,7 +1377,7 @@ export class Game {
     const C = this.combat, P = this.player, S = SCATTER_BONUS[b.scatter];
     this.slot.highlightCells(b.cells);
     EVENTS.line(this.fx, b.cells.map(([r, c]) => this.slot.reelAnchor(c, r)), '#ffe84a', this.fxCtx(null));
-    const chance = Math.min(1, S.chance + P.luck);
+    const chance = Math.min(1, S.chance + P.luck + (C.rune || 0));
     const what = `${b.cells.length} ${FAMILY_NAME[b.scatter]}`;
     if (Math.random() >= chance) {
       this.banner(`${S.name}?`, `${what}: ${Math.round(chance * 100)}% bonus roll... missed`, '#a8a0b0', 1.0);
@@ -1384,7 +1504,8 @@ export class Game {
   applySymbolInner(id, s, ax, ay, rep, I) {
     const C = this.combat, P = this.player, e = C.e;
     const oy = rep * -14;
-    if (s.dmg && e.alive && e.def.dodge && !s.sure && Math.random() < e.def.dodge) {
+    const dodge = (e.def.dodge || 0) + (e.dodgeX || 0);
+    if (s.dmg && e.alive && dodge && !s.sure && Math.random() < dodge) {
       this.ui.float('Miss!', ...this.enemyScreen(0.8), '#c8c8d8', this.time, { size: 14 });
       this.sfx('bump');
       I.miss = true;
@@ -1400,20 +1521,31 @@ export class Game {
       if (s.limit) { P.limitCount = (P.limitCount || 0) + 1; limit = P.limitCount % s.limit === 0; }
       if (limit) { dmg *= 3; I.limit = true; this.ui.float('OVERDRIVE!', ax, ay - 34, '#ff7a3a', this.time, { size: 15 }); }
       if (s.aoe) { dmg += 2 * P.blast; if (C.chain) dmg *= 2; }
+      if (s.lash && (e.poison > 0 || e.burn > 0 || e.chill > 0 || C.stun || e.stunTurns > 0)) {
+        dmg += s.lash; I.lash = true;
+        this.ui.float('Lash!', ax, ay - 30, '#ffb07a', this.time, { size: 13 });
+      }
       let crit = false;
       if (C.frenzy || (s.crit && Math.random() < s.crit) || (s.opener && e.hp >= e.maxHp)) { dmg *= 2; crit = true; }
-      if (e.def.armor && !C.enemyBlocked && !s.pierce) {
+      const earm = (e.def.armor || 0) + (e.armorX || 0);
+      if (earm && !C.enemyBlocked && !s.pierce) {
         C.enemyBlocked = true;
-        dmg = Math.max(0, dmg - e.def.armor);
+        dmg = Math.max(0, dmg - earm);
         this.ui.float('Block', ...this.enemyScreen(0.5), '#b8c8ff', this.time, { size: 12, dy: -18 });
         this.fxEvent('block', ...this.enemyScreen(0.5));
       }
-      if (s.pierce && e.def.armor) this.ui.float('Cleave!', ...this.enemyScreen(0.5), '#ffb08a', this.time, { size: 12, dy: -18 });
+      if (s.pierce && earm) this.ui.float('Cleave!', ...this.enemyScreen(0.5), '#ffb08a', this.time, { size: 12, dy: -18 });
       if (e.adapt === 'blade' && FAMILY[id] === 'blade' && dmg > 0) dmg = Math.max(1, dmg - 1);
       if (e.adapt === 'bomb' && (s.aoe || s.burn) && dmg > 0) dmg = Math.max(1, dmg - 2);
       I.crit = crit; I.dmg = dmg;
       for (let h = 0; h < (s.hits || 1) && e.alive; h++) this.damageEnemy(dmg, crit);
       if (dmg > 0) C.dealt++;
+      if (crit && P.relics.has('vampire_fang')) this.heal(1, ax, ay);
+      if (dmg > 0 && e.affixes && e.affixes.includes('thorned') && !C.thornBit) {     // a Thorned elite pricks back
+        C.thornBit = true;
+        P.hp -= 1; this.slot.state.hp = P.hp;
+        this.ui.float('-1 thorns', ...this.slot.hpAnchor(), '#8ad85a', this.time, { size: 13 });
+      }
       if (s.burn && e.alive) {
         e.burn = Math.max(e.burn || 0, s.burn);
         this.ui.float('Ablaze!', ...this.enemyScreen(0.8), '#ff8a3a', this.time, { size: 13 });
@@ -1442,13 +1574,15 @@ export class Game {
       if (s.leech) this.heal(s.leech, ax, ay);
     }
     if (s.armor) {
-      let a = s.armor + (s.guard && C.swordsLanded ? s.guard : 0);
+      let a = s.armor + (s.guard && C.swordsLanded ? s.guard : 0) + (s.ward ? C.grid.flat().filter(x => FAMILY[x] === 'spell').length - 1 : 0);
       P.armor += a;
       this.ui.float(`+${a} Armor`, ax, ay - 10 + oy, '#9ab8ff', this.time, { size: 13 });
       this.sfx('block');
     }
     if (s.vigor) { P.maxHp += s.vigor; this.slot.state.maxHp = P.maxHp; this.ui.float(`+${s.vigor} Max HP`, ax, ay - 30 + oy, '#ffd060', this.time, { size: 12 }); }
     if (s.heal) this.heal(s.heal, ax, ay + oy);
+    if (s.cleanse && (P.burnT || P.spores)) { P.burnT = 0; P.spores = 0; this.ui.float('Cleansed', ax, ay - 26 + oy, '#8aff9a', this.time, { size: 12 }); }
+    if (s.rune) { C.rune = (C.rune || 0) + s.rune; this.ui.float(`+${Math.round(s.rune * 100)}% Luck`, ax, ay - 26 + oy, '#8ac8ff', this.time, { size: 12 }); }
     if (s.thorns) {
       C.thorns = (C.thorns || 0) + s.thorns;
       this.ui.float(`Thorns ${C.thorns}`, ax, ay - 26 + oy, '#8ad85a', this.time, { size: 12 });
@@ -1484,7 +1618,8 @@ export class Game {
       this.ui.float('Blood Pact!', x, y - 20, '#ff3a3a', this.time, { size: 13 });
       this.damageEnemy(3, false);
     }
-    if (s.self) {
+    if (s.self && P.relics.has('hex_ward')) this.ui.float('Warded', ax, ay - 20 + oy, '#c86aff', this.time, { size: 12 });
+    else if (s.self) {
       P.hp -= s.self;
       this.slot.state.hp = P.hp;
       const [hx, hy] = this.slot.hpAnchor();
@@ -1564,7 +1699,7 @@ export class Game {
       if (dmg <= 0) return;
     }
     e.hp -= dmg;
-    if (e.boss && !e.enraged && e.hp > 0 && e.hp <= e.maxHp * 0.3) {
+    if (e.boss && !e.enraged && e.hp > 0 && e.hp <= e.maxHp * ((this.player.heat || 0) >= 4 ? 0.5 : 0.3)) {
       e.enraged = true;
       e.atk = Math.ceil(e.atk * 1.5);
       this.banner('ENRAGED!', `${e.def.name} hits half again as hard`, '#ff3a2a', 1.6);
@@ -1581,8 +1716,12 @@ export class Game {
     if (e.hp <= 0 && e.alive) this.killEnemy();
   }
 
-  heal(n, ax, ay) {
+  heal(n, ax, ay, raw = false) {
     const P = this.player;
+    if (!raw) {
+      const k = (P.relics.has('blood_ruby') ? 0.7 : 1) * ((P.heat || 0) >= 3 ? 0.75 : 1) * (P.omen === 'blood' ? 0.5 : 1);
+      if (k < 1) n = Math.max(1, Math.round(n * k));
+    }
     if (this.combat && this.combat.e.adapt === 'potion') n = Math.ceil(n / 2);     // Grievous
     const before = P.hp;
     P.hp = Math.min(P.maxHp, P.hp + n);
@@ -1701,7 +1840,7 @@ export class Game {
       const r = k ? this.bossStrike(k) : { dmg: e.atk, hits: 1 };
       for (let h = 0; h < r.hits; h++) this.later(h * 0.35, () => { if (this.combat === C && P.hp > 0) this.bossHit(r.dmg); });
       if (e.melt && e.shell > 0) e.shell--;
-      C.locked = C.lockNext ? C.lockNext.reels : [];
+      C.locked = C.lockNext && !P.relics.has('iron_boots') ? C.lockNext.reels : [];
       this.slot.locks = C.locked; this.slot.lockKind = C.lockNext ? C.lockNext.kind : null;
       C.lockNext = null;
       this.later(0.9, () => this.warnAbility());
@@ -1715,6 +1854,19 @@ export class Game {
       dmg *= 2;
       this.ui.toast(`The ${e.def.name} charges!`, this.time, '#ff8a6a');
     }
+    if (!bonus && e.def.haste && C.turn % e.def.haste === 0) {
+      dmg *= 2;
+      this.ui.toast(`The ${e.def.name} whirs - it strikes twice!`, this.time, '#ffc870');
+    }
+    if (!bonus && e.affixes && e.affixes.includes('frenzied') && e.hp < e.maxHp / 2 && (e.frenzy || 0) < 3) {
+      e.frenzy = (e.frenzy || 0) + 1; e.atk++;
+      this.ui.float('Frenzy +1', ...this.enemyScreen(0.9), '#ff8a3a', this.time, { size: 12 });
+    }
+    let slid = false;
+    if (P.relics.has('quicksilver') && !C.quick) {
+      C.quick = true; slid = true; dmg = 0;
+      this.ui.float('Quicksilver!', ...this.slot.hpAnchor(), '#e8f4ff', this.time, { size: 14 });
+    }
     if (e.chill > 0 && !bonus) {
       dmg = Math.max(0, dmg - 1);
       e.chill--;
@@ -1723,12 +1875,19 @@ export class Game {
     }
     const absorbed = Math.min(Math.max(0, P.armor - (e.adapt === 'shield' ? 2 : 0)), dmg);
     dmg -= absorbed;
+    if (e.def.papercut && !slid && dmg < e.def.papercut) dmg = e.def.papercut;          // papercuts slip past armour
     const [hx, hy] = this.slot.hpAnchor();
     if (absorbed) this.ui.float(`Blocked ${absorbed}`, hx, hy - 22, '#9ab8ff', this.time, { size: 13 });
     if (dmg > 0) {
       P.hp -= dmg;
       this.slot.state.hp = P.hp;
       this.ui.float(`-${dmg}`, hx, hy, '#ff4a4a', this.time, { size: 22 });
+      if (e.def.scald) { P.burnT = Math.max(P.burnT || 0, e.def.scald); this.ui.float('Scalded!', hx, hy - 34, '#ffb080', this.time, { size: 13 }); }
+      if (e.affixes && e.affixes.includes('vampiric') && e.hp < e.maxHp) {
+        const h = Math.ceil(dmg / 2);
+        e.hp = Math.min(e.maxHp, e.hp + h);
+        this.ui.float(`+${h}`, ...this.enemyScreen(0.7), '#ff5a7a', this.time, { size: 14 });
+      }
       if (e.adapt === 'coin' && P.gold > 0) {                     // Pickpocket
         const g = Math.min(3, P.gold);
         P.gold -= g; this.slot.state.gold = P.gold;
@@ -1762,23 +1921,39 @@ export class Game {
       const [x, y] = this.enemyScreen(0.9);
       this.ui.float(`Grudge +${e.def.grudge}`, x, y, '#ffd24a', this.time, { size: 12 });
     }
-    if (e.def.scream && C.turn % e.def.scream === 0) {
+    if (e.def.ink && C.turn % e.def.ink === 0 && !P.relics.has('iron_boots')) {
+      C.locked = [Math.floor(Math.random() * 3)];
+      this.slot.locks = C.locked; this.slot.lockKind = 'ink';
+      this.ui.toast(`The ${e.def.name} blots out one of your reels!`, this.time, '#8ab8ff');
+      this.audio.play('poison');
+    }
+    if (e.affixes && e.affixes.includes('hexing') && C.turn % 3 === 0) {
+      C.tempBag.push('skull');
+      this.ui.toast(`The ${e.def.name} hexes your reels! (+1 Curse this fight)`, this.time, '#c86aff');
+      this.audio.play('curse');
+    }
+    if (e.def.scream && C.turn % e.def.scream === 0 && !P.relics.has('iron_boots')) {
       C.paralyzed = true;
       this.later(0.3, () => { if (e.alive) this.anim(e, 'scream'); });
       this.ui.toast(`The ${e.def.name} screams! You're paralyzed!`, this.time, '#e8c8ff');
       this.audio.play('curse');
       this.hurtFlash = this.time;
     }
-    if (e.def.regen && e.hp < e.maxHp) {
-      e.hp = Math.min(e.maxHp, e.hp + e.def.regen);
+    const regen = (e.def.regen || 0) + (e.regenX || 0);
+    if (regen && e.hp < e.maxHp) {
+      e.hp = Math.min(e.maxHp, e.hp + regen);
       const [x, y] = this.enemyScreen(0.6);
-      this.ui.float(`+${e.def.regen}`, x, y, '#6aff7a', this.time, { size: 13 });
+      this.ui.float(`+${regen}`, x, y, '#6aff7a', this.time, { size: 13 });
     }
   }
 
   bossHit(dmg) {
     const C = this.combat, e = C.e, P = this.player;
     this.audio.voice(e.kind, 'attack');
+    if (dmg > 0 && P.relics.has('quicksilver') && !C.quick) {
+      C.quick = true; dmg = 0;
+      this.ui.float('Quicksilver!', ...this.slot.hpAnchor(), '#e8f4ff', this.time, { size: 14 });
+    }
     if (dmg <= 0) return;
     const absorbed = Math.min(Math.max(0, P.armor - (e.adapt === 'shield' ? 2 : 0)), dmg);
     P.armor -= absorbed;
@@ -1825,17 +2000,47 @@ export class Game {
     this.audio.play('kill');
     this.fxEvent('kill', ...this.enemyScreen(0.55));
     this.player.kills++;
+    this.onKill(e);
     C.phase = 'won';
     C.nextAt = this.time + 1.9;
     this.slot.state.spinEnabled = false;
     this.later(0.8, () => this.slot.summonPods(false));
   }
 
+  onKill(e) {
+    const P = this.player;
+    this.achieve('first_blood');
+    if (e.boss) this.achieve('boss_slayer');
+    if (e.adapt) this.achieve('adapted');
+    if (P.omen === 'blood') this.later(0.6, () => { this.heal(3, 0, 0, true); });
+    if (P.relics.has('soul_jar') && ++P.soulKills % 4 === 0 && (P.soulMight || 0) < 3) {
+      P.soulMight = (P.soulMight || 0) + 1; P.might++;
+      this.later(0.8, () => this.ui.toast('The Soul Jar fills: +1 Might', this.time, '#a8d8ff', 2.4));
+    }
+    if (e.affixes && e.affixes.includes('explosive')) {       // it goes up as it dies
+      const [x, y] = this.enemyScreen(0.55);
+      this.later(0.45, () => {
+        this.fxEvent('wallblast', x, y);
+        const dmg = Math.max(0, 4 - P.armor);
+        if (dmg) { P.hp -= dmg; this.slot.state.hp = P.hp; this.ui.float(`-${dmg}`, ...this.slot.hpAnchor(), '#ff8a3a', this.time, { size: 20 }); }
+        if (P.hp <= 0 && !this.rescue()) this.playerDies();
+      });
+    }
+  }
+
   afterVictory() {
     const C = this.combat, e = C.e;
     const [lo, hi] = e.def.gold;
-    const g = lo + Math.floor(Math.random() * (hi - lo + 1)) + Math.floor(this.floor / 2) + (e.elite ? 6 : 0) +
+    let g = lo + Math.floor(Math.random() * (hi - lo + 1)) + Math.floor(this.floor / 2) + (e.elite ? 6 : 0) +
       (this.player.omen === 'swarm' ? 3 : 0);
+    if (this.player.omen === 'titans') g *= 2;
+    const P0 = this.player;
+    if (P0.hp === 1) this.achieve('close_call');
+    if (P0.relics.has('clockwork_heart') && P0.clockwork < 10) {
+      P0.clockwork++; P0.maxHp++; P0.hp++;
+      this.slot.state.maxHp = P0.maxHp; this.slot.state.hp = P0.hp;
+      this.ui.float('+1 Max HP', ...this.slot.hpAnchor(), '#ffd060', this.time, { size: 13 });
+    }
     this.player.burnT = 0; this.player.spores = 0;
     if (e.boss) {
       const P = this.player, heal = Math.round(P.maxHp * 0.3);
@@ -1929,12 +2134,16 @@ export class Game {
   applyCard(id) {
     const c = CARDS[id], P = this.player;
     P.cards++;
+    if (c.type === 'add' && P.bag.length + 1 >= 25) this.achieve('hoarder');
     if (c.type === 'add') P.bag.push(c.sym);
     else if (c.type === 'upgrade') {
       const i = P.bag.findIndex(s => c.from.includes(s));
       if (i >= 0) P.bag[i] = c.to;
     } else if (c.type === 'passive') {
       P.relics.add(c.relic);
+      if (c.relic === 'iron_boots') P.guard++;
+      if (c.relic === 'blood_ruby') P.might += 2;
+      if (P.relics.size >= 5) this.achieve('relic_hunter');
       if (c.relic === 'horseshoe') P.luck = Math.round((P.luck + 0.1) * 100) / 100;
       if (c.relic === 'trinity_sigil') { P.might++; P.guard++; P.luck = Math.round((P.luck + 0.15) * 100) / 100; }
     } else if (c.type === 'boost') {
@@ -2014,9 +2223,11 @@ export class Game {
 
   // =============================================================== merchant
   openShop(m) {
-    const mark = (this.player.omen === 'fortune' ? 1.3 : 1) * (this.player.relics.has('fools_gold') ? 0.5 : 1);
+    const P = this.player;
+    const mark = (P.omen === 'fortune' ? 1.3 : 1) * (P.relics.has('fools_gold') ? 0.5 : 1) * (P.relics.has('thieves_glove') ? 0.8 : 1) *
+      ((P.heat || 0) >= 5 ? 1.2 : 1);
     if (!m.stock) {
-      let ids = this.rollCards(3, 0.4);
+      let ids = this.rollCards(P.relics.has('thieves_glove') ? 4 : 3, 0.4);
       if (m.secret) {                                // the secret dealer: two unique relics and two rare-or-better cards
         const rel = Object.keys(CARDS).filter(id => CARDS[id].secret && !this.player.relics.has(CARDS[id].relic));
         for (let i = rel.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rel[i], rel[j]] = [rel[j], rel[i]]; }
@@ -2046,6 +2257,8 @@ export class Game {
       if (this.player.gold < it.price) { this.audio.play('deny'); this.ui.toast('Not enough gold', this.time, '#ff8a6a'); return; }
       this.player.gold -= it.price;
       this.slot.state.gold = this.player.gold;
+      this.player.spent = (this.player.spent || 0) + it.price;
+      if (this.player.spent >= 150) this.achieve('big_spender');
       it.sold = true;
       this.cards.pick(i, this.time);
       this.applyCard(it.id);
@@ -2121,6 +2334,18 @@ export class Game {
   fadeIn() { this.fade = { t: 0, out: false }; }
 
   endRun(kind) {
+    if (kind === 'won') {
+      const P = this.player;
+      this.achieve('conqueror');
+      this.achieve(P.cls + '_win');
+      if ((P.heat || 0) >= 3) this.achieve('heat_3');
+      const next = Math.min(HEAT.length - 1, (P.heat || 0) + 1);
+      if (next > (this.progress.heatMax || 0)) {
+        this.progress.heatMax = next;
+        saveProgress(this.progress);
+        this.later(1.5, () => { this.ui.toast(`${HEAT[next].name} unlocked: ${HEAT[next].desc}`, this.time, '#ff9a6a', 4); this.audio.play('burn'); });
+      }
+    }
     this.state = 'won';
     this.cashedOut = kind === 'cashout';
     this.deadT = this.time;
@@ -2249,6 +2474,8 @@ export class Game {
     });
     this.R.drawBatches(this.static);
     if (this.level.secret) this.R.drawBatches(this.level.secret.open ? this.alcove : this.crack);
+    for (const sp of this.spinners || [])                         // the foundry's turning gears
+      this.R.drawModel(this.a.models[sp.model], trs(sp.x, 0, sp.z, sp.ry, 0, 0, 1), { pose: { gear: { rz: now * 0.9 } } });
 
     // ---- entities
     for (const e of this.entities) {
@@ -2293,8 +2520,9 @@ export class Game {
   }
 
   drawRoom(e, now) {
-    const yaw = Math.atan2(DX[e.face], DY[e.face]);
-    this.R.drawModel(this.a.models[ROOMS[e.kind].model], trs(e.x * CELL, 0, e.y * CELL, yaw, 0, 0, 1),
+    const yaw = Math.atan2(DX[e.face], DY[e.face]), model = this.a.models[ROOMS[e.kind].model];
+    if (!model) return;
+    this.R.drawModel(model, trs(e.x * CELL, 0, e.y * CELL, yaw, 0, 0, 1),
       { tint: e.used ? [0.6, 0.58, 0.62] : [1, 1, 1] });
     if (e.kind === 'gambler') {                             // the gambler sits behind his table
       const bx = e.x * CELL - DX[e.face] * 0.62, bz = e.y * CELL - DY[e.face] * 0.62;
@@ -2398,6 +2626,7 @@ export class Game {
 
     // floor label (top right) + status icons (top left)
     U.text(`FLOOR ${this.floor}`, W - 10, 20, { size: 15, align: 'right', spacing: 1 });
+    if (this.player && this.player.heat) U.text(`HEAT ${this.player.heat}`, W - 100, 18, { size: 9, align: 'right', color: '#ff9a6a' });
     let ix = 8;
     const P = this.player;
     U.icon(this.a.icons48.heart, ix, 6, 20);
@@ -2452,6 +2681,7 @@ export class Game {
       const bw = 70;
       U.bar(x - bw / 2, y - 10, bw, 6, e.hp / e.maxHp);
       U.text(`${e.elite ? 'Elite ' : ''}${e.def.name}`, x, y - 15, { size: 11, align: 'center' });
+      if (e.affixes) U.text(e.affixes.map(a => AFFIXES[a].name).join('  '), x, y - 27, { size: 8, align: 'center', color: AFFIXES[e.affixes[0]].col });
       U.icon(this.a.icons48.sword, x + bw / 2 + 3, y - 15, 14);
       U.text(`${e.atk}`, x + bw / 2 + 19, y - 4, { size: 11, color: '#ffb0a0' });
       if (e.poison) { U.icon(this.a.icons48.dagger, x - bw / 2 - 17, y - 15, 14); U.text(`${e.poison}`, x - bw / 2 - 20, y - 4, { size: 10, align: 'right', color: '#8aff6a' }); }
@@ -2634,7 +2864,17 @@ export class Game {
       U.button('skin', `Skin: ${this.skin === 'classic' ? 'Knight' : 'Paladin'}`, bx, y, 140, 20, ptr, { size: 11, focus: this.menuFocus === menu.indexOf('skin') });
       y += 26;
     }
+    if (menu.includes('heat')) {
+      U.button('heat', this.heat ? `HEAT ${this.heat}` : 'Heat: off', bx, y, 140, 20, ptr,
+        { size: 11, focus: this.menuFocus === menu.indexOf('heat'), fill: this.heat ? '#6a2a10' : undefined, hotFill: this.heat ? '#8a3a18' : undefined });
+      if (this.heat) U.icon(this.a.icons48.heat, bx - 22, y + 1, 18);
+      U.text(HEAT[this.heat].desc, bx + 70, y + 30, { size: 8, align: 'center', color: '#ff9a6a', bold: false });
+      y += 38;
+    }
     U.button('crt', `CRT filter: ${this.pipe.crt ? 'On' : 'Off'}  [V]`, bx, y, 140, 20, ptr, { size: 11, focus: this.menuFocus === menu.indexOf('crt') });
+    const got = (this.progress.ach || []).length, all = Object.keys(ACHIEVEMENTS).length;
+    U.button('news', "What's New", W - 196, 8, 86, 18, ptr, { size: 10, focus: this.menuFocus === menu.indexOf('news'), fill: '#1c3a5a', hotFill: '#2a5a8a' });
+    U.button('ach', `Trophies ${got}/${all}`, W - 104, 8, 96, 18, ptr, { size: 10, focus: this.menuFocus === menu.indexOf('ach') });
     // character plate: < THE ROGUE >, her passive, and what unlocks her
     const px = Math.round(W * 0.66), py = Math.round(H * 0.74);
     U.text(open ? K.name : '? ? ?', px, py, { size: 15, align: 'center', spacing: 1, color: open ? '#f2ead8' : '#8a8290' });
@@ -2645,6 +2885,39 @@ export class Game {
     else U.text(`Reach Floor ${K.unlock} to unlock`, px, py + 28, { size: 10, align: 'center', color: '#ff9a7a' });
     U.text('A / D: choose class', px, py + 58, { size: 8, align: 'center', color: '#8a8290', bold: false });
     U.text('Spin. Fight. Loot. Upgrade. Die. Spin again.', W / 2, H - 8, { size: 9, align: 'center', color: '#a898a0', bold: false });
+    if (this.titlePanel) this.drawTitlePanel(now, ptr);
+  }
+
+  drawTitlePanel(now, ptr) {
+    const U = this.ui, W = this.W, H = this.H, g = U.g;
+    g.fillStyle = 'rgba(4,4,10,0.78)'; g.fillRect(0, 0, W, H);
+    const pw = Math.min(W - 24, 560), ph = H - 30, x0 = (W - pw) / 2, y0 = 14;
+    U.panel(x0, y0, pw, ph);
+    if (this.titlePanel === 'news') {
+      U.text("WHAT'S NEW", W / 2, y0 + 22, { size: 11, align: 'center', color: '#8ac8ff', spacing: 2 });
+      U.text(UPDATE.name, W / 2, y0 + 44, { size: 20, align: 'center', color: '#ffd878', spacing: 2 });
+      let y = y0 + 66;
+      for (const n of UPDATE.notes) {
+        const lines = U.wrap(n, pw - 60, 10);
+        U.icon(this.a.icons48.trophy, x0 + 18, y - 9, 12);
+        lines.forEach((l, i) => U.text(l, x0 + 36, y + i * 12, { size: 10, color: '#e8dcc8', bold: false }));
+        y += lines.length * 12 + 7;
+      }
+    } else {
+      const A = this.progress.ach || [], ids = Object.keys(ACHIEVEMENTS);
+      U.text(`TROPHIES  ${A.length} / ${ids.length}`, W / 2, y0 + 22, { size: 14, align: 'center', color: '#ffd878', spacing: 2 });
+      const cw = (pw - 30) / 2, rh = Math.min(34, (ph - 60) / Math.ceil(ids.length / 2));
+      ids.forEach((id, i) => {
+        const cx = x0 + 15 + (i % 2) * cw, cy = y0 + 38 + Math.floor(i / 2) * rh, have = A.includes(id);
+        g.globalAlpha = have ? 1 : 0.3;
+        U.icon(this.a.icons48.trophy, cx, cy, 22);
+        g.globalAlpha = 1;
+        U.text(ACHIEVEMENTS[id].name, cx + 28, cy + 10, { size: 10, color: have ? '#ffd24a' : '#8a8290' });
+        U.text(ACHIEVEMENTS[id].desc, cx + 28, cy + 21, { size: 8, color: have ? '#e8dcc8' : '#6a6470', bold: false });
+      });
+      if (this.progress.heatMax) U.text(`Highest Heat unlocked: ${this.progress.heatMax}`, W / 2, y0 + ph - 22, { size: 9, align: 'center', color: '#ff9a6a' });
+    }
+    U.button('panel:close', 'Close  [ESC]', W / 2 - 45, y0 + ph - 16, 90, 14, ptr, { size: 9 });
   }
 
   drawOmens(now, ptr) {
@@ -2804,6 +3077,11 @@ export class Game {
 
   drawMap() {
     const U = this.ui, L = this.level;
+    if (this.player && this.player.omen === 'shadows') {                     // the Omen of Shadows: no map
+      U.g.fillStyle = 'rgba(8,8,14,0.7)'; U.g.fillRect(this.W - 110, 27, 100, 16);
+      U.text('Your map is dark', this.W - 60, 38, { size: 9, align: 'center', color: '#8a8290', bold: false });
+      return;
+    }
     const cs = Math.max(2, Math.min(4, Math.floor(66 / L.W)));
     const w = L.W * cs, h = L.H * cs, x0 = this.W - w - 10, y0 = 30;
     const g = U.g;

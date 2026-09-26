@@ -4,9 +4,9 @@
 // Reels are cylinders with 8 symbol slots around them; their texture is a
 // canvas strip redrawn whenever the slots change. Rotation theta = k * PI/4
 // shows slot k in the top row and slot k-1 in the bottom row.
-import { gl, updateTex } from './gl.js?v=20260926044644';
-import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260926044644';
-import { SYMBOLS } from './data.js?v=20260926044644';
+import { gl, updateTex } from './gl.js?v=20260926072430';
+import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260926072430';
+import { SYMBOLS } from './data.js?v=20260926072430';
 
 const SLOTS = 8, CELLPX = 96;
 const STEP = Math.PI * 2 / SLOTS;
@@ -230,7 +230,12 @@ export class SlotMachine {
       const sym = SYMBOLS[r.slots[k]];
       const img = sym && this.assets.icons48[sym.icon];
       if (img) c.drawImage(img, (CELLPX - 72) / 2, y + (CELLPX - 72) / 2, 72, 72);
-      if (r.locked) {                                              // stunned by a quake / frozen by frost
+      if (r.locked === 'ink') {                                    // blotted out by an Ink Slime
+        c.fillStyle = 'rgba(8,12,28,0.86)'; c.fillRect(0, y, CELLPX, CELLPX);
+        c.fillStyle = '#1a2a5a';
+        for (const [bx, by, br] of [[30, 34, 22], [66, 58, 26], [40, 80, 16], [80, 24, 12]]) { c.beginPath(); c.arc(bx, y + by, br, 0, Math.PI * 2); c.fill(); }
+        c.fillStyle = '#5a8ad8'; c.fillRect(22, y + 26, 6, 6); c.fillRect(70, y + 50, 5, 5);
+      } else if (r.locked) {                                       // stunned by a quake / frozen by frost
         c.fillStyle = r.locked === 'ice' ? 'rgba(150,210,255,0.55)' : 'rgba(40,24,20,0.55)';
         c.fillRect(0, y, CELLPX, CELLPX);
         c.strokeStyle = r.locked === 'ice' ? '#e8fbff' : '#140a08'; c.lineWidth = 3;

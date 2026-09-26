@@ -81,6 +81,21 @@ export const SYMBOLS = {
   void:         { name: 'Void Rift',        icon: 'void',         rarity: 'epic',      dmg: 2, execute: 0.3, spell: 1, sure: 1, desc: 'Deal 2 damage. Swallows any foe left below 30% HP.' },
   starfall:     { name: 'Starfall',         icon: 'starfall',     rarity: 'legendary', dmg: 2, hits: 5, spell: 1, sure: 1, desc: 'Five falling stars deal 2 damage each.' },
   prism:        { name: 'Prismatic Ray',    icon: 'prism',        rarity: 'legendary', dmg: 4, beam: 4, spell: 1, sure: 1, desc: 'Deal 4 damage. At full HP the ray splits: +4.' },
+  // The Clockwork Deep
+  katana:       { name: 'Katana',           icon: 'katana',       rarity: 'rare',      dmg: 3, crit: 0.25,     desc: 'Deal 3 damage. 25% crit chance.' },
+  shuriken:     { name: 'Shuriken',         icon: 'shuriken',     rarity: 'uncommon',  dmg: 1, hits: 3,        desc: 'Deal 1 damage three times.' },
+  whip:         { name: 'Whip',             icon: 'whip',         rarity: 'uncommon',  dmg: 2, lash: 2,        desc: 'Deal 2 damage, +2 if the foe is poisoned, burning, chilled or stunned.' },
+  halberd:      { name: 'Halberd',          icon: 'halberd',      rarity: 'rare',      dmg: 4, pierce: 1,      desc: 'Deal 4 damage. Cleaves through armour.' },
+  bear_trap:    { name: 'Bear Trap',        icon: 'bear_trap',    rarity: 'uncommon',  dmg: 2, stun: 0.45,     desc: 'Deal 2 damage. 45% chance to stun.' },
+  torch:        { name: 'Torch',            icon: 'torch',        rarity: 'common',    dmg: 1, burn: 3,        desc: 'Deal 1 damage and set the foe ablaze for 3 turns.' },
+  herb:         { name: 'Healing Herb',     icon: 'herb',         rarity: 'common',    heal: 2, cleanse: 1,    desc: 'Restore 2 HP and wash off burns and spores.' },
+  gemstone:     { name: 'Gemstone',         icon: 'gemstone',     rarity: 'rare',      gold: 6,                desc: 'Gain 6 gold.' },
+  rune_stone:   { name: 'Rune Stone',       icon: 'rune_stone',   rarity: 'uncommon',  rune: 0.1,              desc: '+10% Luck on bonus rolls for the rest of this fight. Stacks.' },
+  war_banner:   { name: 'War Banner',       icon: 'war_banner',   rarity: 'rare',      rally: 1, armor: 1,     desc: '+1 Might for the rest of this fight, and gain 1 Armor.' },
+  tower_shield: { name: 'Tower Shield',     icon: 'tower_shield', rarity: 'rare',      armor: 4,               desc: 'Gain 4 Armor.' },
+  blizzard:     { name: 'Blizzard',         icon: 'blizzard',     rarity: 'epic',      dmg: 3, chill: 3, freeze: 0.3, spell: 1, sure: 1, desc: 'Deal 3 damage and chill for 3 turns. 30% chance to freeze.' },
+  arcane_ward:  { name: 'Arcane Ward',      icon: 'arcane_ward',  rarity: 'uncommon',  armor: 3, ward: 1, spell: 1, sure: 1, desc: 'Gain 3 Armor, +1 for every other Spell on the reels.' },
+  thunderstorm: { name: 'Thunderstorm',     icon: 'thunderstorm', rarity: 'epic',      dmg: 3, hits: 3, stun: 0.25, spell: 1, sure: 1, desc: 'Three lightning strikes of 3 damage. 25% chance to stun.' },
 };
 
 // Paytable families: upgraded symbols count as their base symbol.
@@ -97,6 +112,9 @@ export const FAMILY = {
   bomb: 'bomb', dice: 'dice', lodestone: 'coin', thorn: 'shield', apple: 'potion',
   spark: 'spell', bolt_arcane: 'spell', firebolt: 'spell', frost: 'spell', toxic: 'spell', chain: 'spell', fireball: 'spell',
   missiles: 'spell', drain: 'spell', icelance: 'spell', meteor: 'spell', void: 'spell', starfall: 'spell', prism: 'spell',
+  katana: 'blade', shuriken: 'blade', whip: 'blade', halberd: 'blade', bear_trap: 'blade', torch: 'blade',
+  herb: 'potion', gemstone: 'coin', rune_stone: 'clover', war_banner: 'shield', tower_shield: 'shield',
+  blizzard: 'spell', arcane_ward: 'spell', thunderstorm: 'spell',
 };
 export const FAMILY_NAME = { blade: 'Weapons', shield: 'Shields', potion: 'Potions', coin: 'Coins', chest: 'Treasure',
   clover: 'Clovers', skull: 'Curses', bomb: 'Bombs', dice: 'Dice', wild: 'Wildcards', spell: 'Spells' };
@@ -263,6 +281,39 @@ export const CARDS = {
                       desc: 'After every fight, heal 1 HP for every 10 gold you carry (up to 6).' },
   eye_of_depths:    { name: 'Eye of the Depths', rarity: 'secret',   type: 'passive', relic: 'eye_of_depths', secret: true,
                       desc: 'Every floor is mapped the moment you arrive - cracked walls included.' },
+  // The Clockwork Deep: new reel symbols
+  katana:           { name: 'Katana',           rarity: 'rare',      type: 'add',     sym: 'katana' },
+  shuriken:         { name: 'Shuriken',         rarity: 'uncommon',  type: 'add',     sym: 'shuriken' },
+  whip:             { name: 'Whip',             rarity: 'uncommon',  type: 'add',     sym: 'whip' },
+  halberd:          { name: 'Halberd',          rarity: 'rare',      type: 'add',     sym: 'halberd' },
+  bear_trap:        { name: 'Bear Trap',        rarity: 'uncommon',  type: 'add',     sym: 'bear_trap' },
+  torch:            { name: 'Torch',            rarity: 'common',    type: 'add',     sym: 'torch' },
+  herb:             { name: 'Healing Herb',     rarity: 'common',    type: 'add',     sym: 'herb' },
+  gemstone:         { name: 'Gemstone',         rarity: 'rare',      type: 'upgrade', from: ['coins', 'coin_silver'], to: 'gemstone' },
+  rune_stone:       { name: 'Rune Stone',       rarity: 'uncommon',  type: 'add',     sym: 'rune_stone' },
+  war_banner:       { name: 'War Banner',       rarity: 'rare',      type: 'add',     sym: 'war_banner' },
+  tower_shield:     { name: 'Tower Shield',     rarity: 'rare',      type: 'upgrade', from: ['shield', 'shield2'], to: 'tower_shield' },
+  // ...and relics
+  clockwork_heart:  { name: 'Clockwork Heart',  rarity: 'rare',      type: 'passive', relic: 'clockwork_heart',
+                      desc: 'It winds tighter after every fight: +1 Max HP (up to +10).' },
+  vampire_fang:     { name: 'Vampire Fang',     rarity: 'uncommon',  type: 'passive', relic: 'vampire_fang',
+                      desc: 'Every critical hit heals you 1 HP.' },
+  thieves_glove:    { name: "Thief's Glove",    rarity: 'uncommon',  type: 'passive', relic: 'thieves_glove',
+                      desc: 'Merchants lay out a 4th card, and everything costs 20% less.' },
+  soul_jar:         { name: 'Soul Jar',         rarity: 'epic',      type: 'passive', relic: 'soul_jar',
+                      desc: 'Every 4th foe you slay fills the jar: +1 Might (up to +3).' },
+  quicksilver:      { name: 'Quicksilver',      rarity: 'rare',      type: 'passive', relic: 'quicksilver',
+                      desc: 'The first blow of every fight slides right off you.' },
+  tidal_charm:      { name: 'Tidal Charm',      rarity: 'uncommon',  type: 'passive', relic: 'tidal_charm',
+                      desc: 'Heal 4 HP every time you reach a new floor.' },
+  hex_ward:         { name: 'Hex Ward',         rarity: 'rare',      type: 'passive', relic: 'hex_ward',
+                      desc: 'Curses on your reels can no longer hurt you.' },
+  star_map:         { name: 'Star Map',         rarity: 'uncommon',  type: 'passive', relic: 'star_map',
+                      desc: 'The stairs and the special room of every floor are marked on your map.' },
+  iron_boots:       { name: 'Iron Boots',       rarity: 'rare',      type: 'passive', relic: 'iron_boots',
+                      desc: '+1 Guard, and nothing can paralyze you or lock your reels.' },
+  blood_ruby:       { name: 'Blood Ruby',       rarity: 'epic',      type: 'passive', relic: 'blood_ruby',
+                      desc: '+2 Might - but all your healing is 30% weaker.' },
   // spells (cls: only ever offered on a Mage run)
   arcane_spark:     { name: 'Arcane Spark',     rarity: 'common',    type: 'add',     sym: 'spark', cls: 'mage' },
   arcane_bolt:      { name: 'Arcane Bolt',      rarity: 'uncommon',  type: 'upgrade', from: ['spark'],            to: 'bolt_arcane', cls: 'mage' },
@@ -278,6 +329,9 @@ export const CARDS = {
   void_rift:        { name: 'Void Rift',        rarity: 'epic',      type: 'add',     sym: 'void', cls: 'mage' },
   starfall:         { name: 'Starfall',         rarity: 'legendary', type: 'upgrade', from: ['bolt_arcane'],      to: 'starfall', cls: 'mage' },
   prismatic_ray:    { name: 'Prismatic Ray',    rarity: 'legendary', type: 'add',     sym: 'prism', cls: 'mage' },
+  blizzard:         { name: 'Blizzard',         rarity: 'epic',      type: 'upgrade', from: ['frost'],            to: 'blizzard', cls: 'mage' },
+  arcane_ward:      { name: 'Arcane Ward',      rarity: 'uncommon',  type: 'add',     sym: 'arcane_ward', cls: 'mage' },
+  thunderstorm:     { name: 'Thunderstorm',     rarity: 'epic',      type: 'upgrade', from: ['chain'],            to: 'thunderstorm', cls: 'mage' },
 };
 
 // card-face icon for cards that don't put a symbol on the reels
@@ -287,7 +341,9 @@ export const CARD_ICON = { horseshoe: 'horseshoe', heartstone: 'heartstone', whe
   ember_core: 'ember_core', lucky_cat: 'lucky_cat', war_drum: 'war_drum', hourglass: 'hourglass', midas_glove: 'midas_glove',
   treasure_map: 'treasure_map', powder_keg: 'powder_keg', demolition: 'demolition', cursed_crown: 'cursed_crown',
   phoenix_egg: 'phoenix_egg', skeleton_key: 'skeleton_key', fools_gold: 'fools_gold', philosopher_stone: 'philosopher_stone',
-  eye_of_depths: 'eye_of_depths' };
+  eye_of_depths: 'eye_of_depths', clockwork_heart: 'clockwork_heart', vampire_fang: 'vampire_fang', thieves_glove: 'thieves_glove',
+  soul_jar: 'soul_jar', quicksilver: 'quicksilver', tidal_charm: 'tidal_charm', hex_ward: 'hex_ward', star_map: 'star_map',
+  iron_boots: 'iron_boots', blood_ruby: 'blood_ruby' };
 
 // The special room of every floor: a set-piece in a dead end (its model, the colour of its light, the prompt)
 export const ROOMS = {
@@ -301,6 +357,12 @@ export const ROOMS = {
                  prompt: 'A goblin gambler rattles his dice at you.', action: 'Wager' },
   scriptorium: { name: 'Scriptorium', model: 'lectern',       light: [0.5, 0.62, 1.3],
                  prompt: 'A lectern holds a book of burning words.', action: 'Read' },
+  wishing_well: { name: 'Wishing Well', model: 'wishing_well', light: [0.5, 0.8, 1.3],
+                  prompt: 'An old well glitters with the wishes of the dead.', action: 'Toss a coin' },
+  armory:       { name: 'Armory',       model: 'armory_rack',  light: [1.2, 0.95, 0.7],
+                  prompt: 'A forgotten armory - its racks still hold good steel.', action: 'Arm yourself' },
+  cursed_idol:  { name: 'Cursed Idol',  model: 'cursed_idol',  light: [0.4, 1.3, 0.45],
+                  prompt: 'A golden idol leers at you from its plinth.', action: 'Take the gold' },
 };
 
 // Enemies read your build: from floor 3 a foe may come adapted to the symbol family your reels lean on
@@ -311,6 +373,62 @@ export const ADAPT = {
   coin:   { name: 'Pickpocket', desc: 'every hit steals 3 of your gold', col: '#ffd24a' },
   bomb:   { name: 'Fireproof',  desc: 'bombs and burns deal 2 less', col: '#ff8a3a' },
   spell:  { name: 'Warded',     desc: 'a 6-point ward soaks your first hits', col: '#c8a0ff' },
+};
+
+// Elites carry dark gifts (affixes): shown on their nameplate
+export const AFFIXES = {
+  vampiric:  { name: 'Vampiric',     desc: 'heals half the damage it deals', col: '#ff5a7a' },
+  thorned:   { name: 'Thorned',      desc: 'striking it pricks you for 1 (once a spin)', col: '#8ad85a' },
+  armored:   { name: 'Armored',      desc: 'blocks 2 damage each turn', col: '#b8c8ff' },
+  frenzied:  { name: 'Frenzied',     desc: 'below half health it hits 1 harder every turn', col: '#ff8a3a' },
+  regen:     { name: 'Regenerating', desc: 'heals 2 HP every turn', col: '#6aff7a' },
+  hexing:    { name: 'Hexing',       desc: 'every 3rd turn it curses your reels', col: '#c86aff' },
+  explosive: { name: 'Explosive',    desc: 'bursts for 4 damage when it dies', col: '#ffb04a' },
+  swift:     { name: 'Swift',        desc: 'dodges 20% of blows', col: '#e8f4ff' },
+};
+
+// Heat: after a win the next level of challenge unlocks; every level adds its rule to the ones below it
+export const HEAT = [
+  { name: 'No Heat', desc: 'The descent as it was meant to be.' },
+  { name: 'Heat 1', desc: 'Foes have 15% more HP.' },
+  { name: 'Heat 2', desc: 'Elites carry an extra dark gift.' },
+  { name: 'Heat 3', desc: 'All healing is 25% weaker.' },
+  { name: 'Heat 4', desc: 'Bosses enrage at half health.' },
+  { name: 'Heat 5', desc: 'Start with an extra Curse. Merchants charge 20% more.' },
+];
+
+export const ACHIEVEMENTS = {
+  first_blood:   { name: 'First Blood',        desc: 'Win your first fight.' },
+  boss_slayer:   { name: 'Giant Slayer',       desc: 'Defeat a biome boss.' },
+  deep_diver:    { name: 'Deep Diver',         desc: 'Reach Floor 8.' },
+  conqueror:     { name: 'Conqueror',          desc: 'Win a run.' },
+  secret_finder: { name: 'Behind the Wall',    desc: 'Find a secret room.' },
+  relic_hunter:  { name: 'Relic Hunter',       desc: 'Carry 5 relics at once.' },
+  jackpot:       { name: 'Jackpot!',           desc: 'Line up 3 of the same rare symbol.' },
+  big_spender:   { name: 'Big Spender',        desc: 'Spend 150 gold at merchants in one run.' },
+  close_call:    { name: 'Close Call',         desc: 'Win a fight with 1 HP left.' },
+  hoarder:       { name: 'Hoarder',            desc: 'Have 25 symbols on your reels.' },
+  demolitionist: { name: 'Demolitionist',      desc: 'Blow open 3 cracked walls in one run.' },
+  adapted:       { name: 'Survival of the Fittest', desc: 'Slay a foe that adapted to your reels.' },
+  heat_3:        { name: 'Feel the Heat',      desc: 'Win a run on Heat 3 or higher.' },
+  knight_win:    { name: 'Stalwart',           desc: 'Win a run as the Knight.' },
+  rogue_win:     { name: 'Light Fingers',      desc: 'Win a run as the Rogue.' },
+  mage_win:      { name: 'Archmage',           desc: 'Win a run as the Mage.' },
+};
+
+// the update's own notes (the title screen shows them once, and on demand)
+export const UPDATE = {
+  id: 'clockwork_deep', name: 'THE CLOCKWORK DEEP',
+  notes: [
+    'Two new biomes: the Sunken Library and the Clockwork Foundry - with their own foes, bosses, music and dressing.',
+    'New foes: Coglings, Ink Slimes, Page Wraiths and Steam Wraiths, each with a trick of its own.',
+    'Elites now carry dark gifts: Vampiric, Thorned, Armored, Frenzied, Regenerating, Hexing, Explosive, Swift.',
+    '14 new reel symbols - Katana, Shuriken, Whip, Halberd, Bear Trap, Torch, Healing Herb, Gemstone, Rune Stone, War Banner, Tower Shield, and the spells Blizzard, Arcane Ward and Thunderstorm.',
+    '10 new relics and 4 new Omens.',
+    'Three new special rooms: the Wishing Well, the Armory and the Cursed Idol.',
+    'Heat: win a run to unlock harder descents, five levels deep.',
+    '16 achievements to earn.',
+  ],
 };
 
 export const CARD_PRICE = { common: 8, uncommon: 14, rare: 22, epic: 34, legendary: 50, secret: 40 };
@@ -346,6 +464,10 @@ export const OMENS = {
   swarm:   { name: 'Omen of the Swarm', icon: 'omen_swarm',   desc: 'Two more foes on every floor. Every kill pays +3 gold.' },
   frailty: { name: 'Omen of Frailty',   icon: 'omen_frailty', desc: '2 extra Curses in your reels, but Rare and better cards turn up far more often.' },
   wild:    { name: 'Omen of the Wild',  icon: 'omen_wild',    desc: 'Start with a Wildcard in your reels. Foes hit 1 harder.' },
+  blood:   { name: 'Omen of Blood',     icon: 'omen_blood',   desc: 'Every kill heals you 3 HP - but all other healing is halved.' },
+  shadows: { name: 'Omen of Shadows',   icon: 'omen_shadows', desc: 'Your map stays dark all run, but every chest offers 4 cards.' },
+  titans:  { name: 'Omen of Titans',    icon: 'omen_titans',  desc: 'Every foe is an elite with a dark gift. Every kill pays double gold.' },
+  tempest: { name: 'Omen of the Tempest', icon: 'omen_tempest', desc: 'Lightning strikes every foe for 4 as a fight begins - and you for 1.' },
 };
 
 export const ENEMIES = {
@@ -362,12 +484,22 @@ export const ENEMIES = {
   wickling: { name: 'Wickling',     model: 'wickling', hp: 12, atk: 1, grudge: 1, gold: [5, 9], note: 'Its flame burns hotter every turn.' },
   murk:     { name: 'Murkling',     model: 'murk',     hp: 7,  atk: 2, dodge: 0.25, gold: [2, 5], note: 'Melts into a puddle to dodge.' },
   jester:   { name: 'Jester Imp',   model: 'jester',   hp: 10, atk: 2, charge: 3, gold: [3, 6], note: 'Spin-kicks for double damage every third turn.' },
+  // The Clockwork Deep
+  cogling:     { name: 'Cogling',      model: 'goblin',   tex: 'bake_goblin_brass',   hp: 9,  atk: 2, armor: 1, haste: 4, gold: [4, 7],
+                 note: 'Wound tight: every 4th turn it strikes twice.' },
+  inkslime:    { name: 'Ink Slime',    model: 'slime',    tex: 'bake_slime_ink',      hp: 8,  atk: 1, regen: 1, ink: 3, gold: [2, 5],
+                 note: 'Every 3rd turn it blots out one of your reels.' },
+  pagewraith:  { name: 'Page Wraith',  model: 'duskwing', tex: 'bake_duskwing_page',  hp: 6,  atk: 1, dodge: 0.3, papercut: 1, gold: [2, 5],
+                 note: 'Its papercuts slip past your armour.' },
+  steamwraith: { name: 'Steam Wraith', model: 'wailer',   tex: 'bake_wailer_steam',   hp: 12, atk: 2, scald: 2, scream: 5, gold: [5, 8],
+                 note: 'Its touch scalds: you burn for 2 spins.' },
 };
 
 // stair guards (elites) per biome
 export const ELITES = { dungeon: ['goblin', 'skeleton', 'wailer'], mines: ['tusker', 'skeleton', 'wickling'],
   crypt: ['wailer', 'cultist', 'warden'], frozen: ['warden', 'skeleton', 'tusker'], magma: ['tusker', 'warden', 'wickling'],
-  ruins: ['warden', 'tusker', 'wailer'], grotto: ['murk', 'wickling', 'slime'], vault: ['warden', 'jester', 'skeleton'] };
+  ruins: ['warden', 'tusker', 'wailer'], grotto: ['murk', 'wickling', 'slime'], vault: ['warden', 'jester', 'skeleton'],
+  library: ['pagewraith', 'wailer', 'inkslime'], foundry: ['cogling', 'warden', 'steamwraith'] };
 
 export const BIOMES = {
   dungeon: {
@@ -414,12 +546,23 @@ BIOMES.vault = {
   torch: [1.35, 1.0, 0.55], torchRadius: 5.5, lanternOnPlayer: [0.32, 0.28, 0.22],
 };
 
+BIOMES.library = {
+  name: 'Sunken Library', enemies: ['inkslime', 'inkslime', 'pagewraith', 'pagewraith', 'skeleton', 'cultist', 'wailer', 'murk'],
+  fog: [0.02, 0.05, 0.06], fogRange: [3.0, 13.0], ambient: [0.17, 0.25, 0.27],
+  torch: [1.4, 1.1, 0.7], torchRadius: 5.6, lanternOnPlayer: [0.32, 0.38, 0.4],
+};
+BIOMES.foundry = {
+  name: 'Clockwork Foundry', enemies: ['cogling', 'cogling', 'steamwraith', 'steamwraith', 'goblin', 'tusker', 'warden', 'jester'],
+  fog: [0.06, 0.04, 0.025], fogRange: [3.0, 14.0], ambient: [0.27, 0.21, 0.15],
+  torch: [2.0, 1.2, 0.5], torchRadius: 6.6, lanternOnPlayer: [0.42, 0.34, 0.24],
+};
+
 // A run: four biomes of four levels each. The Dungeon always comes first; the other three are drawn at
 // random from the rest for every run. Level 4 of every biome is its boss hall.
 export const LEVELS_PER_BIOME = 4;
 export const ACTS = 4;
 export const LAST_FLOOR = LEVELS_PER_BIOME * ACTS;
-export const ROUTE_POOL = ['mines', 'crypt', 'frozen', 'magma', 'ruins', 'grotto', 'vault'];
+export const ROUTE_POOL = ['mines', 'crypt', 'frozen', 'magma', 'ruins', 'grotto', 'vault', 'library', 'foundry'];
 const DEFAULT_ROUTE = ['dungeon', 'mines', 'crypt', 'ruins'];
 export function makeRoute(rand) {
   const pool = [...ROUTE_POOL], out = ['dungeon'];
@@ -463,6 +606,10 @@ export const BOSSES = {
              hp: 46, atk: 4, armor: 2, size: 0.95, abilities: ['slam', 'fortify'], gold: [30, 42] },
   grotto:  { kind: 'boar_demon', tex: 'bake_boar_demon_spore', name: 'The Sporeback Boar', title: 'Rotten. Rooted. Raging.', hp: 40,
              atk: 3, size: 0.8, abilities: ['spores', 'regrow'], gold: [28, 38] },
+  library: { kind: 'mimic_colossus', tex: 'bake_mimic_colossus_tome', name: 'The Grimoire Colossus', title: 'Bound. Ravenous. Unwritten.',
+             hp: 46, atk: 4, size: 0.95, abilities: ['curse', 'devour'], gold: [34, 46] },
+  foundry: { kind: 'gravemaw', tex: 'bake_gravemaw_brass', name: 'The Brass Colossus', title: 'Forged. Tireless. Unstoppable.',
+             hp: 48, atk: 4, armor: 1, size: 0.9, abilities: ['slam', 'burn'], gold: [34, 46] },
   vault:   { kind: 'mimic_colossus', name: 'The Mimic Colossus', title: 'Deceptive. Gluttonous. Vicious.', hp: 44, atk: 4, size: 0.95,
              abilities: ['greed', 'devour'], gold: [40, 55] },
 };

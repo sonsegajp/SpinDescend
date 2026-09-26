@@ -32,6 +32,7 @@ const SFX = {
   cursehit: A => { A.tone(200, 0.32, { vol: 0.1, type: 'sawtooth', slide: 0.5 }); A.tone(151, 0.32, { vol: 0.07, slide: 0.6, delay: 0.05 }); A.noise(0.3, { vol: 0.12, freq: 500, q: 3 }); },
   fuse: A => { A.noise(0.36, { vol: 0.07, freq: 5200, q: 4 }); A.noise(0.36, { vol: 0.1, freq: 400, q: 0.8, slide: 2.5 }); },
   warp: A => { A.tone(196, 0.9, { vol: 0.1, type: 'sine', slide: 4 }); A.noise(0.8, { vol: 0.1, freq: 2600, q: 2, slide: 2.2 }); arp(A, [523, 784, 1047, 1568, 2093], 0.07, { vol: 0.06, type: 'triangle', dur: 0.35, delay: 0.1 }); },
+  crack: A => { A.noise(0.07, { vol: 0.55, freq: 3400, q: 0.9 }); A.tone(2200, 0.05, { vol: 0.08, slide: 0.4 }); A.noise(0.18, { vol: 0.12, freq: 900, q: 1, delay: 0.03 }); },
   explode: A => { A.noise(0.9, { vol: 0.65, freq: 220, type: 'lowpass', slide: 0.45 }); A.tone(66, 0.7, { vol: 0.45, type: 'sine', slide: 0.4 }); A.noise(0.2, { vol: 0.24, freq: 3000 }); crackle(A, 8, 0.6, { vol: 0.08 }); },
   cackle: A => { [520, 440, 540, 400, 300].forEach((f, i) => A.tone(f, 0.08, { vol: 0.06, type: 'square', slide: 0.8, delay: i * 0.075 })); A.noise(0.4, { vol: 0.08, freq: 500, q: 4 }); },
   shieldup: A => { A.tone(400, 0.25, { vol: 0.13, type: 'triangle', slide: 1.5 }); A.tone(1200, 0.3, { vol: 0.05, type: 'sine', delay: 0.05 }); A.noise(0.12, { vol: 0.1, freq: 4000, q: 3 }); },
@@ -111,12 +112,15 @@ export const SONGS = {
   ruins:   { bpm: 76, root: 55, scale: [0, 2, 4, 5, 7, 9, 10], prog: [0, 4, 5, 3], pad: 'triangle', cut: 1600, bass: 'triangle', lead: 'flute', oct: 1, density: 0.4, perc: 'wind' },
   grotto:  { bpm: 68, root: 48, scale: [0, 2, 3, 7, 8], prog: [0, 3, 0, 4], pad: 'sine', cut: 1400, bass: 'sine', lead: 'pluck', oct: 2, density: 0.36, perc: 'drip' },
   vault:   { bpm: 80, root: 53, scale: [0, 2, 4, 5, 7, 9, 11], prog: [0, 3, 4, 0], pad: 'organ', cut: 1500, bass: 'triangle', lead: 'bell', oct: 1, density: 0.34, perc: 'tick' },
+  library: { bpm: 60, root: 51, scale: [0, 2, 3, 5, 7, 8, 11], prog: [0, 5, 3, 4], pad: 'organ', cut: 1200, bass: 'sine', lead: 'harp', oct: 1, density: 0.28, perc: 'drip' },
+  foundry: { bpm: 96, root: 43, scale: [0, 2, 3, 5, 7, 8, 10], prog: [0, 0, 6, 5], pad: 'sawtooth', cut: 700, bass: 'square', lead: 'pluck', oct: 1, density: 0.4, perc: 'clink' },
   shop:    { bpm: 104, root: 55, scale: [0, 2, 4, 5, 7, 9, 11], prog: [0, 3, 4, 0], pad: 'triangle', cut: 1800, bass: 'triangle', lead: 'pluck', oct: 1, density: 0.55, perc: 'shaker' },
 };
 
 const gibber = (A, fs, step, o = {}) => fs.forEach((f, i) => A.tone(f, o.dur || 0.07, { vol: o.vol || 0.07, type: o.type || 'square', slide: o.slide || 0.85, delay: (o.delay || 0) + i * step }));
 const BOSS_VOICE = { goblin_king: 'goblin', bone_colossus: 'skeleton', high_priest: 'cultist', frost_ooze: 'slime',
-  forge_tusker: 'tusker', stone_warden: 'warden', sporemother: 'murk', mimic_king: 'mimic' };
+  forge_tusker: 'tusker', stone_warden: 'warden', sporemother: 'murk', mimic_king: 'mimic',
+  cogling: 'goblin', inkslime: 'slime', pagewraith: 'duskwing', steamwraith: 'wailer' };                // the new foes speak with their kin's voice
 export const VOICES = {
   goblin: {
     intro: A => gibber(A, [620, 780, 540, 860], 0.07),
@@ -423,7 +427,8 @@ export class Audio {
     g.gain.value = 0.0;
     // [gain, noise lowpass Hz, drone Hz, drone gain]: wind for the ruins and the ice, rumble for the forge
     const A = { dungeon: [0.07, 220, 55, 0.25], mines: [0.07, 220, 49, 0.25], crypt: [0.06, 160, 41, 0.3],
-                frozen: [0.06, 1100, 98, 0.06], magma: [0.08, 140, 36, 0.35], ruins: [0.05, 700, 82, 0.08] }[biome] ||
+                frozen: [0.06, 1100, 98, 0.06], magma: [0.08, 140, 36, 0.35], ruins: [0.05, 700, 82, 0.08],
+                library: [0.06, 380, 62, 0.12], foundry: [0.08, 180, 44, 0.32] }[biome] ||
               [0.07, 220, 55, 0.25];
     g.gain.linearRampToValueAtTime(A[0], t + 2);
     g.connect(this.master);

@@ -1123,6 +1123,169 @@ Object.assign(RECIPES, {
 });
 
 // ---------------------------------------------------------------- status / event effects
+// ---- The Clockwork Deep
+Object.assign(RECIPES, {
+  katana: melee({                                        // one iaido draw: a long flat cut, a beat - then it opens
+    travel: 0.12,
+    hit(fx, x, y, S, I) {
+      cut(fx, x, y, 0.08, { r: 90, span: 0.7, w: 7, ...STEEL, life: 0.32, sweep: 0.2 });
+      cut(fx, x - 4, y + 5, 0.08, { r: 90, span: 0.7, w: 4, ...STEEL, life: 0.3, sweep: 0.2, delay: 0.04, alpha: 0.5 });
+      later(0.16, () => {
+        fx.glow(x, y, 20 * SZ, 0.2, '#ffffff', 1.6);
+        sparks(fx, x, y, C.silver, 14, [120, 260], 0.08, 0.3);
+        if (I.crit) { fx.flash('#ffffff', 0.12, 0.4); stars(fx, x, y, C.gold, 8); }
+      });
+      S.play('shing');
+    },
+  }),
+  shuriken: melee({                                      // three stars whip in from the left and bite
+    travel: 0.12,
+    hit(fx, x, y, S, I) {
+      for (let i = 0; i < 3; i++) {
+        const a = -0.45 + i * 0.45 + R(-0.12, 0.12);
+        thrust(fx, x + R(-8, 8), y + R(-8, 8), { rot: a, len: 10, back: 60, w: 3, ...STEEL, life: 0.2, delay: i * 0.07 });
+        later(i * 0.07, () => { stars(fx, x + R(-8, 8), y + R(-8, 8), C.silver, 3, 6); S.play('stab'); });
+      }
+    },
+  }),
+  whip: melee({                                          // an S of two lashes and the crack at the tip
+    travel: 0.14, glint: '#ffc8a0',
+    hit(fx, x, y, S, I) {
+      const L = { col: '#8a4a1a', edge: '#ffc8a0', core: '#fff4e8', life: 0.26 };
+      cut(fx, x - 8, y - 6, 0.1, { r: 30, span: 1.6, w: 4, ...L });
+      cut(fx, x + 8, y + 6, 0.1, { r: 30, span: 1.6, w: 4, ...L, delay: 0.06, bend: -1 });
+      later(0.12, () => {
+        fx.ring(x + 24 * SZ, y + 6, 2, 16, 0.18, '#ffffff', 2);
+        sparks(fx, x + 24 * SZ, y + 6, ['#ffffff', '#ffe0b0'], 10, [120, 240]);
+        S.play('crack');
+        if (I.lash) { fx.flash('#ffb07a', 0.1, 0.25); stars(fx, x, y, C.orange, 8); }
+      });
+      S.play('whoosh');
+    },
+  }),
+  halberd: melee({                                       // the spike drives in, then the axe blade chops down
+    travel: 0.18,
+    hit(fx, x, y, S, I) {
+      thrust(fx, x, y, { rot: -0.1, len: 50, back: 40, w: 7, ...STEEL, life: 0.26 });
+      cut(fx, x + 6, y, Math.PI / 2, { r: 46, span: 1.4, w: 12, ...STEEL, life: 0.34, delay: 0.1 });
+      later(0.16, () => {
+        fx.ring(x, y + 20 * SZ, 4, 40 * SZ, 0.3, '#e0e8f8', 3, true, 0.3);
+        sparks(fx, x, y, C.silver, 16, [100, 240], Math.PI / 2, 0.8);
+        if (I.pierce) fx.burst(x, y, { n: 10, speed: [60, 160], life: [0.3, 0.6], size: [2, 4], shape: 'shard', col: C.silver, g: 300 });
+        S.shake(0.6);
+      });
+      S.play('thrust'); later(0.1, () => S.play('chop'));
+    },
+  }),
+  bear_trap: melee({                                     // the jaws snap shut from above and below
+    travel: 0.14, glint: '#c8c8d0',
+    hit(fx, x, y, S, I) {
+      const J = { col: '#4a4a5a', edge: '#d8d8e8', core: '#ffffff', life: 0.24, sweep: 0.25 };
+      cut(fx, x, y - 12 * SZ, 0, { r: 36, span: 1.3, w: 6, ...J, bend: -1 });
+      cut(fx, x, y + 12 * SZ, Math.PI, { r: 36, span: 1.3, w: 6, ...J, bend: -1 });
+      later(0.07, () => {
+        fx.ring(x, y, 3, 26 * SZ, 0.22, '#e8e8f0', 3);
+        sparks(fx, x, y, ['#ffffff', '#c8c8d0'], 14, [100, 220]);
+        if (I.stun) for (let i = 0; i < 5; i++) fx.burst(x + Math.cos(i * 1.26) * 18, y - 26 + Math.sin(i * 1.26) * 5, { n: 1, speed: [0, 1], life: [1.0, 1.2], size: [2.5, 2.5], shape: 'star', col: '#ffe070', add: true });
+        S.shake(0.4);
+      });
+      S.play('chomp'); later(0.05, () => S.play('clank'));
+    },
+  }),
+  torch: melee({                                         // a swing of the brand: a small burning arc and sparks
+    glint: '#ffb030', launchSfx: 'fireball',
+    hit(fx, x, y, S, I) {
+      cut(fx, x, y, 0.7 * Math.PI, { r: 28, span: 1.8, w: 8, ...FIRE, life: 0.34, bend: -1 });
+      alongArc(x, y, 0.7 * Math.PI, 28, 1.8, 5, (px, py) => embers(fx, px, py, C.fire, 4), -1);
+      fx.glow(x, y, 22 * SZ, 0.3, 'rgba(255,140,40,1)', 1.6);
+      S.play('burn');
+    },
+  }),
+  herb: toHp({ trail: { shape: 'leaf', col: C.green, speed: [3, 14], life: [0.3, 0.5], size: [1.5, 2.5], spin: 2 },
+               hit(fx, x, y, S) {
+                 HEAL(fx, x, y, 12);
+                 fx.burst(x, y, { n: 12, speed: [20, 70], life: [0.7, 1.2], size: [2, 3.5], shape: 'leaf', col: C.green, g: -40, spin: 2 });
+                 stars(fx, x, y, ['#ffffff', '#d8ffb0'], 5);
+                 S.play('potion');
+               } }),
+  gemstone: {
+    target: 'gold', travel: 0.34,
+    launch(fx, a, b, S) {
+      fx.glow(a[0], a[1], 20, 0.4, 'rgba(120,255,180,0.9)');
+      fx.burst(a[0], a[1], { n: 10, speed: [40, 120], life: [0.4, 0.7], size: [2, 3], shape: 'shard', col: ['#6aff9a', '#5ac8ff', '#ff5a8a', '#ffffff'], add: true, drag: 2 });
+      COIN(4, 'coin_silver').launch(fx, a, b, S);
+    },
+    impact(fx, x, y, S, I) {
+      COIN(4, 'coin_silver').impact(fx, x, y, S, I);
+      stars(fx, x, y, ['#ffffff', '#6aff9a', '#5ac8ff'], 10);
+    },
+  },
+  rune_stone: HERE((fx, x, y, S) => {
+    fx.ring(x, y, 4, 34, 0.5, '#8ac8ff', 3);
+    fx.ring(x, y, 2, 20, 0.4, '#ffffff', 2);
+    fx.glow(x, y, 22, 0.5, 'rgba(120,180,255,0.9)', 1.5);
+    fx.burst(x, y, { n: 14, speed: [20, 70], life: [0.6, 1.1], size: [1.5, 3], shape: 'star', col: ['#8ac8ff', '#ffffff'], add: true, g: -50 });
+    S.play('echo');
+  }),
+  war_banner: HERE((fx, x, y, S) => {
+    fx.ring(x, y, 6, 70, 0.55, '#ff5a4a', 4);
+    fx.ring(x, y, 4, 44, 0.4, '#ffd24a', 2);
+    fx.burst(x, y, { n: 16, speed: [60, 160], life: [0.5, 0.9], size: [2, 3], shape: 'star', col: ['#ff8a6a', '#ffd24a', '#ffffff'], add: true, drag: 2 });
+    fx.flash('#ff4a2a', 0.14, 0.18);
+    S.shake(0.3); S.play('horn');
+  }),
+  tower_shield: toHp({ trail: { col: C.blue, speed: [3, 12], life: [0.2, 0.3], size: [1, 2], add: true },
+                       hit(fx, x, y, S) {
+                         shieldPop(fx, x, y, C.blue, 3);
+                         fx.ring(x, y, 8, 48, 0.5, '#e0e8f8', 4);
+                         S.shake(0.3); S.play('bulwark');
+                       } }),
+  blizzard: SPELL({
+    cast: 'icecast', glow: 'rgba(140,220,255,0.9)', travel: 0.36,
+    launch(fx, a, b, S, dur) {
+      for (let i = 0; i < 10; i++) {
+        const sx = b[0] + R(-110, 40), sy = b[1] - R(120, 200);
+        fx.shot({ from: [sx, sy], to: [b[0] + R(-26, 26), b[1] + R(-18, 18)], dur: dur - 0.16 + i * 0.03, arc: 0, ease: k => k * k,
+                  head: { r: 3, col: 'rgba(200,240,255,0.9)', core: '#ffffff' },
+                  trail: { shape: 'shard', col: C.ice, speed: [2, 10], life: [0.2, 0.4], size: [1, 2], add: true }, rate: 60 });
+      }
+    },
+    hit(fx, x, y, S, I) {
+      fx.flash('#c8f0ff', 0.18, 0.3);
+      fx.burst(x, y, { n: 30, speed: [60, 200], life: [0.5, 1.0], size: [2, 4], shape: 'shard', col: C.ice, add: true, drag: 2, spin: 2 });
+      fx.ring(x, y, 6, 50, 0.45, '#bfefff', 3);
+      puff(fx, x, y, ['#e8fbff', '#c8f0ff'], 12, [4, 8]);
+      if (I.stun) stars(fx, x, y - 20, ['#ffffff', '#a8e8ff'], 8);
+      S.shake(0.5); S.play('frost');
+    },
+  }),
+  arcane_ward: toHp({ trail: { shape: 'star', col: ['#d8b0ff', '#8a5ad8'], speed: [3, 12], life: [0.2, 0.4], size: [1, 2], add: true },
+                      hit(fx, x, y, S) {
+                        shieldPop(fx, x, y, ['#ffffff', '#c8a0ff', '#8a5ad8'], 2);
+                        for (let i = 0; i < 6; i++) fx.beam(x + Math.cos(i * TAU / 6) * 22, y + Math.sin(i * TAU / 6) * 22,
+                          x + Math.cos((i + 1) * TAU / 6) * 22, y + Math.sin((i + 1) * TAU / 6) * 22, 0.45, '#c8a0ff', 2);
+                        stars(fx, x, y, C.dark, 8);
+                        S.play('shieldup2');
+                      } }),
+  thunderstorm: SPELL({
+    cast: 'thunder', glow: 'rgba(200,220,255,0.95)', travel: 0.3,
+    launch(fx, a, b, S, dur) {
+      for (let i = 0; i < 3; i++) setTimeout(() => {
+        const tx = b[0] + R(-24, 24), ty = b[1] + R(-16, 16);
+        fx.bolt(tx + R(-30, 30), ty - 180, tx, ty, 0.28, i % 2 ? '#8ad8ff' : '#fff6a0', 3);
+        fx.glow(tx, ty, 20, 0.25, 'rgba(220,235,255,1)', 1.4);
+        sparks(fx, tx, ty, ['#ffffff', '#fff6a0', '#8ad8ff'], 10, [80, 200]);
+      }, (dur * 0.5 + i * 0.12) * 1000);
+    },
+    hit(fx, x, y, S, I) {
+      fx.flash('#e0ecff', 0.2, 0.4);
+      puff(fx, x, y - 30, ['#4a4a5a', '#6a6a7a'], 8, [6, 10]);
+      if (I.stun) stars(fx, x, y - 24, ['#ffe070', '#ffffff'], 8);
+      S.shake(0.8); S.play('thunder');
+    },
+  }),
+});
+
 export const EVENTS = {
   miss(fx, x, y, S) { fx.burst(x, y, { n: 8, speed: [120, 200], life: [0.15, 0.25], shape: 'spark', col: '#c8c8d8', dir: 0, spread: 0.2, add: true, len: 0.06 }); S.play('miss'); },
   block(fx, x, y, S) { sparks(fx, x, y, ['#ffffff', '#b8c8ff'], 10, [80, 180]); fx.ring(x, y, 3, 16, 0.2, '#b8c8ff', 2); S.play('clank'); },

@@ -1,7 +1,7 @@
 // assets.js - loads every model, texture, card, icon and UI image the game uses.
-import { parseSDM, Model } from './gl.js?v=20260926044644';
-import { parseSDA } from './anim.js?v=20260926044644';
-import { CARDS, SYMBOLS, CARD_ICON, OMENS, BOSSES } from './data.js?v=20260926044644';
+import { parseSDM, Model } from './gl.js?v=20260926072430';
+import { parseSDA } from './anim.js?v=20260926072430';
+import { CARDS, SYMBOLS, CARD_ICON, OMENS, BOSSES, ENEMIES } from './data.js?v=20260926072430';
 
 export const BASE = (window.SD_ASSETS || '../assets/');
 // local dev: never trust the HTTP cache (assets are re-exported from Blender constantly)
@@ -15,6 +15,9 @@ export const ANIMATED = ['knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mi
 export const MODELS = [
   'knight', 'goblin', 'skeleton', 'slime', 'cultist', 'mimic', 'wailer', 'tusker', 'duskwing', 'warden', 'wickling', 'murk', 'jester', 'merchant', 'rogue', 'mage',
   'slime_monarch', 'boar_demon', 'mimic_colossus', 'gravemaw', 'crack_wall', 'teleporter', 'secret_altar',
+  'library_wall0', 'library_wall1', 'library_wall2', 'library_floor0', 'library_floor1', 'library_ceil', 'book_pile', 'candelabra', 'ink_puddle',
+  'foundry_wall0', 'foundry_wall1', 'foundry_wall2', 'foundry_floor0', 'foundry_floor1', 'foundry_ceil', 'gear_stand', 'steam_vent', 'pipe_corner',
+  'wishing_well', 'armory_rack', 'cursed_idol',
   'fountain', 'forge', 'blood_altar', 'gambler_table', 'lectern',
   'slot_machine', 'slot_machine_arcane', 'slot_machine_knight', 'slot_machine_forest', 'card', 'reel_pod',
   'dun_wall0', 'dun_wall1', 'dun_wall2', 'dun_wall3', 'dun_floor0', 'dun_floor1', 'dun_floor2', 'dun_ceil', 'dun_pillar',
@@ -56,9 +59,9 @@ export async function loadAll(onProgress) {
     const r = await fetch(BASE + 'models/' + m + '.sda' + V, { cache: DEV ? 'no-store' : 'default' });
     if (r.ok) assets.anims[m] = parseSDA(await r.arrayBuffer());
   }));
-  const texNames = new Set(['parchment', 'card_back', 'st_ui', 'bake_knight_paladin', ...Object.values(BOSSES).map(b => b.tex).filter(Boolean)]);
+  const texNames = new Set(['parchment', 'card_back', 'st_ui', 'bake_knight_paladin', ...[...Object.values(BOSSES), ...Object.values(ENEMIES)].map(b => b.tex).filter(Boolean)]);
   for (const m of MODELS) for (const s of raws[m].sections) if (s.tex && s.tex[0] !== '@') texNames.add(s.tex);
-  const iconNames = new Set(['heart', 'coins', 'boots', 'fire', 'clover4', ...Object.values(CARD_ICON),
+  const iconNames = new Set(['heart', 'coins', 'boots', 'fire', 'clover4', 'trophy', 'heat', ...Object.values(CARD_ICON),
                              ...Object.values(OMENS).map(o => o.icon)]);
   for (const s of Object.values(SYMBOLS)) iconNames.add(s.icon);
   const jobs = [];
