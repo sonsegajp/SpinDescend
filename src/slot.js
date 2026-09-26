@@ -4,9 +4,9 @@
 // Reels are cylinders with 8 symbol slots around them; their texture is a
 // canvas strip redrawn whenever the slots change. Rotation theta = k * PI/4
 // shows slot k in the top row and slot k-1 in the bottom row.
-import { gl, updateTex } from './gl.js?v=20260925232412';
-import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925232412';
-import { SYMBOLS } from './data.js?v=20260925232412';
+import { gl, updateTex } from './gl.js?v=20260925232706';
+import { perspective, lookAt, mul, trs, xform, easeOut, clamp } from './math.js?v=20260925232706';
+import { SYMBOLS } from './data.js?v=20260925232706';
 
 const SLOTS = 8, CELLPX = 96;
 const STEP = Math.PI * 2 / SLOTS;
@@ -62,7 +62,7 @@ export class SlotMachine {
     const fov = 24 * Math.PI / 180, D = 10;
     const hh = D * Math.tan(fov / 2), hw = hh * aspect;
     const fw = Math.min(0.985, 1.32 / aspect);
-    const s = fw * 2 * hw / 4.26;
+    const s = fw * 2 * hw / 4.26 * 0.8;                         // the machine sits a size smaller than full width
     this.proj = perspective(fov, aspect, 0.5, 60);
     this.view = lookAt([0, 0, D], [0, 0, 0]);
     this.base = { s, y: -hh - 0.04 * s };
