@@ -1,7 +1,7 @@
 // assets.js - loads every model, texture, card, icon and UI image the game uses.
-import { parseSDM, Model } from './gl.js?v=20260925232706';
-import { parseSDA } from './anim.js?v=20260925232706';
-import { CARDS, SYMBOLS, CARD_ICON } from './data.js?v=20260925232706';
+import { parseSDM, Model } from './gl.js?v=20260925233606';
+import { parseSDA } from './anim.js?v=20260925233606';
+import { CARDS, SYMBOLS, CARD_ICON, OMENS } from './data.js?v=20260925233606';
 
 export const BASE = (window.SD_ASSETS || '../assets/');
 // local dev: never trust the HTTP cache (assets are re-exported from Blender constantly)
@@ -53,7 +53,8 @@ export async function loadAll(onProgress) {
   }));
   const texNames = new Set(['parchment', 'card_back', 'st_ui', 'bake_knight_paladin']);
   for (const m of MODELS) for (const s of raws[m].sections) if (s.tex && s.tex[0] !== '@') texNames.add(s.tex);
-  const iconNames = new Set(['heart', 'coins', 'boots', 'fire', 'clover4', ...Object.values(CARD_ICON)]);
+  const iconNames = new Set(['heart', 'coins', 'boots', 'fire', 'clover4', ...Object.values(CARD_ICON),
+                             ...Object.values(OMENS).map(o => o.icon)]);
   for (const s of Object.values(SYMBOLS)) iconNames.add(s.icon);
   const jobs = [];
   for (const t of texNames) jobs.push(['textures', t, BASE + 'textures/' + t + '.png']);

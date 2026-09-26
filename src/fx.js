@@ -680,6 +680,42 @@ Object.assign(RECIPES, {
 });
 
 
+// ---------------------------------------------------------------- curios
+Object.assign(RECIPES, {
+  lodestone: {
+    target: 'gold', travel: 0.4,
+    launch(fx, a, b, S) {
+      S.play('magnet');
+      fx.ring(a[0], a[1], 26, 4, 0.35, '#c8b8e8', 2);
+      COIN(4).launch(fx, a, b, S);
+    },
+    impact(fx, x, y, S, I) { COIN(4).impact(fx, x, y, S, I); },
+  },
+  thorn: toHp({ trail: { shape: 'leaf', col: ['#3a8a2a', '#62ae46'], speed: [3, 12], life: [0.3, 0.5], size: [1.5, 2.5], spin: 2 },
+                hit(fx, x, y, S) {
+                  shieldPop(fx, x, y, ['#d8ffb0', '#8ad85a', '#3a8a2a'], 1);
+                  fx.burst(x, y, { n: 14, speed: [60, 160], life: [0.4, 0.7], size: [2, 3], shape: 'shard', col: ['#c8d890', '#8a5a30'], drag: 2 });
+                  S.play('thorns');
+                } }),
+  warhorn: {
+    target: 'reel', travel: 0.05, launch() {},
+    impact(fx, x, y, S) {
+      fx.ring(x, y, 6, 90, 0.6, '#ff9a5a', 4);
+      fx.ring(x, y, 4, 60, 0.45, '#ffffff', 2);
+      fx.flash('#ff6a2a', 0.18, 0.25);
+      fx.burst(x, y, { n: 18, speed: [60, 180], life: [0.5, 0.9], size: [2, 3], shape: 'star', col: ['#ffd08a', '#ff9a5a', '#ffffff'], add: true, drag: 2 });
+      S.shake(0.5); S.play('horn');
+    },
+  },
+  apple: toHp({ trail: { shape: 'star', col: C.gold, speed: [3, 12], life: [0.3, 0.5], size: [1, 2], add: true },
+                hit(fx, x, y, S) {
+                  HEAL(fx, x, y, 18, ['#fff6c0', '#ffd060']);
+                  fx.ring(x, y, 5, 44, 0.5, '#ffd060', 3);
+                  stars(fx, x, y, C.gold, 12);
+                  S.play('apple');
+                } }),
+});
+
 // ---------------------------------------------------------------- the Mage's spells
 // Every spell leaves the reel with a casting flash and its own sigil ring, flies (or strikes) at the foe,
 // and lands with its own element's burst and sound.
@@ -880,6 +916,16 @@ export const EVENTS = {
   burnTick(fx, x, y, S) { fx.burst(x, y, { n: 16, speed: [20, 60], life: [0.5, 0.9], size: [2, 3.5], col: C.fire, add: true, g: -120, jx: 16, jy: 12 }); S.play('burn'); },
   poisonTick(fx, x, y, S) { fx.burst(x, y, { n: 14, speed: [10, 40], life: [0.6, 1.0], size: [1.5, 3], shape: 'bubble', col: C.poison, g: -60, jx: 18, jy: 12 }); S.play('poison'); },
   chill(fx, x, y, S) { fx.burst(x, y, { n: 12, speed: [10, 40], life: [0.6, 1.0], size: [1.5, 3], shape: 'shard', col: C.ice, add: true, g: 40, jx: 18, jy: 10 }); },
+  mirror(fx, x, y, S) {
+    fx.burst(x, y, { n: 14, speed: [50, 150], life: [0.35, 0.7], size: [2, 3.5], shape: 'shard', col: ['#ffffff', '#d8ecff', '#9ab4d0'], add: true, drag: 2, spin: 2 });
+    fx.ring(x, y, 4, 30, 0.35, '#d8ecff', 2);
+    S.play('mirror');
+  },
+  thorns(fx, x, y, S) {
+    fx.burst(x, y, { n: 16, speed: [60, 180], life: [0.3, 0.6], size: [2, 3.5], shape: 'shard', col: ['#c8d890', '#8ad85a', '#3a8a2a'], drag: 2 });
+    fx.burst(x, y, { n: 8, speed: [20, 70], life: [0.6, 1.0], size: [2, 3], shape: 'leaf', col: ['#3a8a2a', '#62ae46'], g: 120, spin: 2 });
+    S.play('thorns');
+  },
   chainStrike(fx, x, y, S) {
     fx.bolt(x + R(-40, 40), y - 140, x + R(-8, 8), y, 0.3, '#fff6a0', 3);
     sparks(fx, x, y, ['#ffffff', '#fff6a0', '#8ad8ff'], 14, [80, 200]);

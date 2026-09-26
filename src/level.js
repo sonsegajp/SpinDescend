@@ -3,9 +3,9 @@
 //
 // Grid: cell (x, y) is centred at world (x*CELL, 0, y*CELL); y grows toward +Z.
 // Directions: 0 = north (-Z), 1 = east (+X), 2 = south (+Z), 3 = west (-X).
-import { rng, trs } from './math.js?v=20260925232706';
-import { Batcher } from './gl.js?v=20260925232706';
-import { BIOMES, ELITES, biomeForFloor, LAST_FLOOR } from './data.js?v=20260925232706';
+import { rng, trs } from './math.js?v=20260925233606';
+import { Batcher } from './gl.js?v=20260925233606';
+import { BIOMES, ELITES, biomeForFloor, LAST_FLOOR } from './data.js?v=20260925233606';
 
 export const CELL = 2.0;
 export const WALL_H = 2.6;
@@ -15,7 +15,7 @@ export const DY = [-1, 0, 1, 0];
 // ------------------------------------------------------------------ generation
 // Branching corridor mazes: every decision happens at a junction, where the
 // player is prompted Left / Forward / Right / Back (Doom RPG style).
-export function generate(floor, seed) {
+export function generate(floor, seed, opts = {}) {
   const R = rng(seed);
   const biome = biomeForFloor(floor);
   const tier = (floor - 1) % 2 + (floor > 6 ? 1 : 0);      // floors grow as you descend
@@ -150,10 +150,10 @@ export function generate(floor, seed) {
   for (let i = 0; i < nChests; i++) {
     const [x, y] = deadEnds.splice(Math.floor(R() * deadEnds.length), 1)[0];
     occupied.add(key(x, y));
-    entities.push({ type: 'chest', x, y, face: faceOpen(x, y), mimic: floor > 1 && R.chance(0.25) });
+    entities.push({ type: 'chest', x, y, face: faceOpen(x, y), mimic: floor > 1 && R.chance(0.25 * (opts.mimics || 1)) });
   }
   // enemies block corridors
-  const nEnemies = Math.min(3 + floor, 9);
+  const nEnemies = Math.min(3 + floor, 9) + (opts.extraFoes || 0);
   const cand = cells.filter(([x, y]) => dist[y * W + x] >= 3 && exits(x, y).length === 2);
   let placed = 0;
   for (let t = 0; t < 400 && placed < nEnemies && cand.length; t++) {

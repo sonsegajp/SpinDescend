@@ -1,17 +1,17 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260925232706';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925232706';
-import { Renderer, invert } from './render.js?v=20260925232706';
-import { SlotMachine } from './slot.js?v=20260925232706';
-import { CardView } from './cards.js?v=20260925232706';
-import { UI, SERIF } from './ui.js?v=20260925232706';
-import { Animator } from './anim.js?v=20260925232706';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260925232706';
-import { is } from './input.js?v=20260925232706';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260925232706';
-import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925232706';
+import { gl } from './gl.js?v=20260925233606';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260925233606';
+import { Renderer, invert } from './render.js?v=20260925233606';
+import { SlotMachine } from './slot.js?v=20260925233606';
+import { CardView } from './cards.js?v=20260925233606';
+import { UI, SERIF } from './ui.js?v=20260925233606';
+import { Animator } from './anim.js?v=20260925233606';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260925233606';
+import { is } from './input.js?v=20260925233606';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260925233606';
+import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260925233606';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -67,7 +67,8 @@ export class Game {
     if (q.get('skin') === 'paladin') this.skin = 'paladin';
     if (q.get('unlock') === 'all') this.progress.best = 99;                              // ?unlock=all: every class
     if (CLASSES[q.get('class')]) { this.cls = q.get('class'); this.titleKnight = null; }  // ?class=rogue|mage
-    if (q.has('pods')) this.forcePods = true;                                            // ?pods: the Rogue summons every spin
+    if (q.has('pods')) this.forcePods = true;
+    if (OMENS[q.get('omen')]) this.forceOmen = q.get('omen');                            // ?omen=greed: skip the choice                                            // ?pods: the Rogue summons every spin
     if (q.get('model') && this.a.models[q.get('model')]) {             // ?title&model=name&yaw=deg: show any model on the plinth
       this.viewModel = q.get('model');
       this.viewYaw = parseFloat(q.get('yaw') || '0') * Math.PI / 180;
@@ -77,6 +78,7 @@ export class Game {
     if (q.has('title')) return;
     this.newRun();
     this.fade = null;
+    if (this.state === 'omen' && !q.has('omens')) { this.omenOffer = null; this.state = 'explore'; }   // ?omens: show the choice
     const f = parseInt(q.get('floor') || '1', 10);
     if (f > 1) {
       this.loadFloor(f, this.runSeed + f * 7919);
@@ -85,6 +87,8 @@ export class Game {
     }
     if (q.get('face')) { this.dir = parseInt(q.get('face'), 10) & 3; this.cam.yaw = dirYaw(this.dir); }
     if (q.has('map')) this.showMap = true;
+    if (q.get('relics')) for (const r of q.get('relics').split(',')) if (CARDS[r]) this.applyCard(r);   // ?relics=war_drum,hourglass
+    if (q.get('reels')) { const b = q.get('reels').split(',').filter(id => SYMBOLS[id]); if (b.length) this.player.bag = b; }  // ?reels=sword,mirror
     if (q.has('combat')) {
       const e = this.entities.find(x => x.type === 'enemy' && (!q.get('combat') || x.kind === q.get('combat'))) ||
                 this.entities.find(x => x.type === 'enemy');
@@ -192,18 +196,85 @@ export class Game {
     this.slot.setStatic([[K.bag[0], 'shield', 'potion'], ['coin', 'skull', 'chest']]);
     this.loadFloor(1, this.runSeed + 1);
     this.fadeIn();
+    // an omen before the first step: three offered, take one or refuse
+    const keys = Object.keys(OMENS).sort(() => Math.random() - 0.5).slice(0, 3);
+    if (this.forceOmen) { this.applyOmen(this.forceOmen); this.enterFloorOne(); return; }
+    this.omenOffer = keys;
+    this.omenFocus = -1;
+    this.state = 'omen';
+  }
+
+  enterFloorOne() {
+    this.state = 'explore';
     this.ui.toast('Floor 1 - The Dungeon', this.time, '#e8c878', 2.6);
     this.ui.toast('A goblin merchant trades on the way to the stairs', this.time, '#ffd24a', 3.2);
   }
 
+  applyOmen(k) {
+    const P = this.player;
+    P.omen = k;
+    if (!k) return;
+    const O = { greed: 0, glass: 0, fortune: 0, hoard: 0, iron: 0, swarm: 0, frailty: 0, wild: 0 };
+    if (k === 'glass') { P.might += 2; P.maxHp = Math.max(8, Math.round(P.maxHp * 0.7)); P.hp = P.maxHp; }
+    if (k === 'fortune') P.luck = Math.round((P.luck + 0.15) * 100) / 100;
+    if (k === 'iron') { P.guard += 2; P.maxHp -= 5; P.hp = P.maxHp; }
+    if (k === 'frailty') P.bag.push('skull', 'skull');
+    if (k === 'wild') P.bag.push('wild');
+    this.slot.state.hp = P.hp; this.slot.state.maxHp = P.maxHp;
+    // the floor was generated before the choice: the Swarm and the Hoard reshape it now
+    if (k === 'swarm' || k === 'hoard') this.loadFloor(1, this.runSeed + 1);
+    for (const e of this.entities) if (e.type === 'enemy') this.omenFoe(e);
+    return O;
+  }
+
+  // Greed thickens foes, the Wild sharpens them
+  omenFoe(e) {
+    const k = this.player && this.player.omen;
+    if (e.omened) return;
+    e.omened = true;
+    if (k === 'greed') { e.hp = e.maxHp = Math.round(e.maxHp * 1.25); }
+    if (k === 'wild') e.atk += 1;
+  }
+
+  updateOmen(keys, clicks) {
+    const pick = (i) => {
+      const k = i < 0 ? null : this.omenOffer[i];
+      if (i >= 0 && !k) return;
+      this.applyOmen(k);
+      this.audio.play(k ? 'jackpot' : 'click');
+      if (k) this.ui.toast(`${OMENS[k].name}: ${OMENS[k].desc}`, this.time, '#e8c070', 3.4);
+      this.omenOffer = null;
+      this.enterFloorOne();
+    };
+    for (const k of keys) {
+      if (is(k, 'n1')) pick(0);
+      else if (is(k, 'n2')) pick(1);
+      else if (is(k, 'n3')) pick(2);
+      else if (is(k, 'cancel')) pick(-1);
+      else if (is(k, 'turnL')) this.omenFocus = Math.max(0, this.omenFocus - 1);
+      else if (is(k, 'turnR')) this.omenFocus = Math.min(2, this.omenFocus + 1);
+      else if (is(k, 'confirm') && this.omenFocus >= 0) pick(this.omenFocus);
+      if (this.state !== 'omen') return;
+    }
+    for (const c of clicks) {
+      const id = this.ui.hit(c);
+      if (id === 'omen:none') { pick(-1); return; }
+      if (id && id.startsWith('omen:')) { pick(parseInt(id.slice(5), 10)); return; }
+    }
+  }
+
   loadFloor(floor, seed, title = false) {
     this.floor = floor;
-    this.level = generate(floor, seed);
+    const om = this.player && this.player.omen;
+    this.level = generate(floor, seed, { mimics: om === 'hoard' ? 2 : 1, extraFoes: om === 'swarm' ? 2 : 0 });
     this.biome = BIOMES[this.level.biome];
     const built = build(this.level, this.a.models);
     this.static = built.batches;
     this.lights = built.lights;
     this.entities = this.level.entities.map(e => this.spawn(e));
+    for (const e of this.entities) if (e.type === 'enemy') this.omenFoe(e);
+    if (this.player && this.player.relics.has('treasure_map'))
+      for (const e of this.entities) if (e.type === 'chest') this.explored.add(`${e.x},${e.y}`);
     this.px = this.level.start.x; this.py = this.level.start.y; this.dir = this.level.start.dir;
     this.cam = { x: this.px * CELL, z: this.py * CELL, yaw: dirYaw(this.dir), bob: 0 };
     this.move = null;
@@ -305,6 +376,7 @@ export class Game {
       case 'reward': this.updateReward(keys, clicks); break;
       case 'shop': this.updateShop(keys, clicks); break;
       case 'stairs': this.updateStairs(keys, clicks); break;
+      case 'omen': this.updateOmen(keys, clicks); break;
       case 'bag':
         for (const k of keys) {
           if (is(k, 'bag') && this.bagPage !== 'pay') this.bagPage = 'pay';
@@ -550,15 +622,17 @@ export class Game {
       return;
     }
     this.audio.play('chest');
-    const gold = 4 + this.floor * 2 + Math.floor(Math.random() * 4);
+    const gold = 4 + this.floor * 2 + Math.floor(Math.random() * 4) + (this.player.relics.has('treasure_map') ? 6 : 0);
     this.state = 'opening';
     this.later(0.65, () => {
       this.gainGold(gold, this.W / 2, this.H * 0.35);
+      if (this.player.omen === 'hoard') this.rewardQueue = [{ n: 3, source: 'chest' }];
       this.offerCards(3, 'chest');
     });
   }
 
   gainGold(n, x, y) {
+    if (this.player.omen === 'greed') n = Math.round(n * 1.5);
     this.player.gold += n;
     this.slot.state.gold = this.player.gold;
     this.ui.float(`+${n}`, x, y, '#ffd24a', this.time, { size: 18 });
@@ -574,6 +648,7 @@ export class Game {
     this.state = 'combat';
     const def = e.def;
     this.ui.toast(`${e.elite ? 'Elite ' : ''}${def.name} attacks!`, this.time, '#ff8a6a');
+    this.audio.voice(e.kind, 'intro');
     if (def.note) this.later(0.9, () => this.ui.toast(def.note, this.time, '#c8b8a8'));
     this.player.armor = 0;
     this.slot.state.spinEnabled = true;
@@ -799,6 +874,11 @@ export class Game {
         break;
       case 'spiked': P.guard++; if (e.alive) this.damageEnemy(5, true); break;
       case 'potion3': this.heal(P.maxHp, 0, 0); break;
+      case 'mirror': C.blessed = true; break;
+      case 'lodestone': { const [gx, gy] = this.slot.goldAnchor(); this.gainGold(20, gx, gy - 14); break; }
+      case 'thorn': P.guard++; C.thorns = (C.thorns || 0) + 6; break;
+      case 'warhorn': P.might++; this.audio.play('horn'); break;
+      case 'apple': P.maxHp += 5; this.slot.state.maxHp = P.maxHp; this.heal(P.maxHp, 0, 0); break;
       case 'firebolt': e.burn = Math.max(e.burn || 0, 6); this.ui.float('Ablaze!', ...this.enemyScreen(0.8), '#ff8a3a', this.time, { size: 15 }); break;
       case 'frost':
         C.stun = true; e.stunTurns = 1; e.chill = Math.max(e.chill || 0, 3);
@@ -864,6 +944,14 @@ export class Game {
     let id = C.grid[row][reel];
     const [ax, ay] = this.slot.reelAnchor(reel, row);
     this.slot.highlight(row, reel);
+    if (SYMBOLS[id].mirror) {                                   // the Mirror Shard reflects the symbol beside it
+      const nb = reel >= 3 ? (reel === 3 ? 0 : 2) : reel > 0 ? reel - 1 : 1;
+      const other = C.grid[row][nb];
+      this.fxEvent('mirror', ax, ay);
+      if (!other || SYMBOLS[other].mirror) { this.ui.float('Nothing to reflect', ax, ay - 16, '#d8ecff', this.time, { size: 11 }); C.nextAt = this.time + 0.5; return; }
+      id = other;
+      this.ui.float(`Mirror > ${SYMBOLS[id].name}`, ax, ay - 16, '#d8ecff', this.time, { size: 12 });
+    }
     // transforming symbols
     if (SYMBOLS[id].wild) {
       const pool = this.player.bag.filter(s => !SYMBOLS[s].wild);
@@ -881,6 +969,10 @@ export class Game {
     if (C.charm && !s.charm && Math.random() < 0.25) times++;
     if (C.blessed) times++;
     // Spellweaver: every 4th spell the Mage casts echoes
+    if (this.player.relics.has('war_drum') && C.turn === 1) {                 // War Drum: the first spin doubles
+      times++;
+      if (!C.drummed) { C.drummed = true; this.ui.toast('The War Drum thunders: every symbol twice!', this.time, '#ff9a5a'); this.audio.play('drum'); }
+    }
     if (s.spell && this.player.cls === 'mage' && ++this.player.casts % 4 === 0) {
       times++;
       this.ui.float('Echo!', ax - 20, ay - 26, '#d8b0ff', this.time, { size: 14 });
@@ -949,7 +1041,7 @@ export class Game {
       this.sfx('bump');
       I.miss = true;
     } else if (s.dmg && e.alive) {
-      let dmg = (s.dmgRoll ? s.dmgRoll[0] + Math.floor(Math.random() * (s.dmgRoll[1] - s.dmgRoll[0] + 1)) : s.dmg) + P.might;
+      let dmg = (s.dmgRoll ? s.dmgRoll[0] + Math.floor(Math.random() * (s.dmgRoll[1] - s.dmgRoll[0] + 1)) : s.dmg) + P.might + (C.rally || 0);
       if (s.phalanx) dmg += C.grid.flat().filter(x => x === id).length - 1;
       if (s.arc) dmg += C.grid.flat().filter(x => FAMILY[x] === 'spell').length - 1;
       if (s.beam && P.hp >= P.maxHp) { dmg += s.beam; I.beam = true; this.ui.float('Dawnlight!', ax, ay - 30, '#a8e8ff', this.time, { size: 13 }); }
@@ -1004,13 +1096,28 @@ export class Game {
       this.ui.float(`+${a} Armor`, ax, ay - 10 + oy, '#9ab8ff', this.time, { size: 13 });
       this.sfx('block');
     }
+    if (s.vigor) { P.maxHp += s.vigor; this.slot.state.maxHp = P.maxHp; this.ui.float(`+${s.vigor} Max HP`, ax, ay - 30 + oy, '#ffd060', this.time, { size: 12 }); }
     if (s.heal) this.heal(s.heal, ax, ay + oy);
+    if (s.thorns) {
+      C.thorns = (C.thorns || 0) + s.thorns;
+      this.ui.float(`Thorns ${C.thorns}`, ax, ay - 26 + oy, '#8ad85a', this.time, { size: 12 });
+    }
+    if (s.rally) {
+      C.rally = (C.rally || 0) + s.rally;
+      this.ui.float(`+${s.rally} Might (this fight)`, ax, ay - 26 + oy, '#ff9a5a', this.time, { size: 12 });
+    }
     if (s.vamp) C.vials += s.vamp;
     if (s.gold) {
       let g = s.gold;
       if (s.jackpot && Math.random() < s.jackpot) { g = 5; I.jackpot = true; }
+      if (s.magnet) g += C.grid.flat().filter(x => FAMILY[x] === 'coin').length;
       if (FAMILY[id] === 'coin') g += P.fortune;
+      if (FAMILY[id] === 'coin' && P.relics.has('lucky_cat') && Math.random() < 0.2) {
+        g *= 3; I.jackpot = true;
+        this.ui.float('Lucky Cat!', ax, ay - 30 + oy, '#ffe070', this.time, { size: 13 });
+      }
       if (C.doubleGold) g *= 2;
+      if (P.omen === 'greed') g = Math.round(g * 1.5);
       const [gx, gy] = this.slot.goldAnchor();
       this.player.gold += g;
       this.slot.state.gold = P.gold;
@@ -1090,6 +1197,7 @@ export class Game {
     e.hp -= dmg;
     e.flash = 1;
     if (e.hp > 0) this.anim(e, 'hit', { fade: 0.05 });
+    if (e.hp > 0 && this.time - (e.hurtVoiceT || 0) > 0.6) { e.hurtVoiceT = this.time; this.audio.voice(e.kind, 'hurt'); }
     const [x, y] = this.enemyScreen(0.85);
     this.ui.float(dmg > 0 ? `-${dmg}${crit ? '!' : ''}` : '0', x + (Math.random() - 0.5) * 20, y, crit ? '#ffea4a' : '#ff4a4a',
       this.time, { size: crit ? 24 : 19 });
@@ -1131,6 +1239,10 @@ export class Game {
       if (e.hp <= 0) { this.killEnemy(); return; }
     }
     C.enemyBlocked = false;
+    if (this.player.relics.has('hourglass') && C.turn % 5 === 0 && !C.freeSpin) {
+      C.freeSpin = true;
+      this.ui.toast('Sands of Time: the hourglass turns - a free spin!', this.time, '#f0c040');
+    }
     if (C.freeSpin) {
       C.freeSpin = false;
       C.phase = 'ready';
@@ -1159,6 +1271,7 @@ export class Game {
     const bonus = C.bonusStrike;              // the free hit on a paralyzed player: no specials (they'd re-trigger
     C.bonusStrike = false;                    // on the same turn number - a scream would chain forever)
     let dmg = bonus ? Math.ceil(e.atk / 2) : e.atk;     // the paralysis hit is a lesser blow
+    this.audio.voice(e.kind, 'attack');
     if (!bonus && e.def.charge && C.turn % e.def.charge === 0) {
       dmg *= 2;
       this.ui.toast(`The ${e.def.name} charges!`, this.time, '#ff8a6a');
@@ -1184,6 +1297,14 @@ export class Game {
     } else this.audio.play('block');
     if (P.hp <= 5) this.rescue();
     if (P.hp <= 0) { this.playerDies(); return; }
+    if (C.thorns && e.alive) {
+      this.later(0.22, () => {
+        if (this.combat !== C || !e.alive) return;
+        this.ui.float('Thorns!', ...this.enemyScreen(0.9), '#8ad85a', this.time, { size: 13 });
+        this.fxEvent('thorns', ...this.enemyScreen(0.55));
+        this.damageEnemy(C.thorns, false);
+      });
+    }
     if (bonus) return;
     // specials
     if (e.def.curse && C.turn % e.def.curse === 0) {
@@ -1232,6 +1353,7 @@ export class Game {
     e.deathT = this.time;
     this.anim(e, 'death', { fade: 0.06, then: null });
     this.audio.play('enemydie');
+    this.audio.voice(e.kind, 'die');
     this.audio.play('kill');
     this.fxEvent('kill', ...this.enemyScreen(0.55));
     this.player.kills++;
@@ -1244,9 +1366,10 @@ export class Game {
   afterVictory() {
     const C = this.combat, e = C.e;
     const [lo, hi] = e.def.gold;
-    const g = lo + Math.floor(Math.random() * (hi - lo + 1)) + Math.floor(this.floor / 2) + (e.elite ? 6 : 0);
+    const g = lo + Math.floor(Math.random() * (hi - lo + 1)) + Math.floor(this.floor / 2) + (e.elite ? 6 : 0) +
+      (this.player.omen === 'swarm' ? 3 : 0);
     const [x, y] = this.enemyScreen(0.5);
-    this.gainGold(g, x, y);
+    this.gainGold(this.player.relics.has('midas_glove') ? Math.round(g * 1.5) : g, x, y);
     e.gone = true;
     this.combat = null;
     this.player.armor = 0;
@@ -1315,7 +1438,7 @@ export class Game {
   }
 
   offerCards(n, source, min) {
-    const ids = this.rollCards(n, source === 'boss' ? 1.5 : 0, min);
+    const ids = this.rollCards(n, (source === 'boss' ? 1.5 : 0) + (this.player.omen === 'frailty' ? 1.2 : 0), min);
     this.reward = { ids, source };
     this.cards.show(ids.map(id => ({ id })), this.time);
     this.cards.keyFocus = -1;
@@ -1411,7 +1534,8 @@ export class Game {
 
   // =============================================================== merchant
   openShop(m) {
-    if (!m.stock) m.stock = this.rollCards(3, 0.4).map(id => ({ id, price: CARD_PRICE[CARDS[id].rarity] + Math.floor(this.floor / 2) * 2, sold: false }));
+    const mark = this.player.omen === 'fortune' ? 1.3 : 1;
+    if (!m.stock) m.stock = this.rollCards(3, 0.4).map(id => ({ id, price: Math.round((CARD_PRICE[CARDS[id].rarity] + Math.floor(this.floor / 2) * 2) * mark), sold: false }));
     this.shop = { m, items: m.stock.filter(it => !it.sold) };
     this.cards.layout(this.W, this.H, this.slot, [0.28, 0.86], 0.78);
     this.cards.show(this.shop.items.map(it => ({ id: it.id, price: it.price })), this.time, 'below', -1);
@@ -1765,6 +1889,7 @@ export class Game {
     U.text(`${Math.max(0, P.hp)}`, ix + 23, 21, { size: 13 });
     ix += 50;
     if (P.armor) { U.icon(this.a.icons48.shield, ix, 6, 20); U.text(`${P.armor}`, ix + 23, 21, { size: 13, color: '#b8c8ff' }); ix += 46; }
+    if (P.omen) { U.icon(this.a.icons48[OMENS[P.omen].icon], ix, 6, 20); ix += 24; }
     for (const r of P.relics) {
       const img = this.a.icons48[CARD_ICON[r] || r];
       if (img) { U.icon(img, ix, 6, 20); ix += 24; }
@@ -1832,6 +1957,7 @@ export class Game {
     if (this.state === 'reward') this.drawRewardUI(now, ptr);
     if (this.state === 'shop') this.drawShopUI(now, ptr);
     if (this.state === 'stairs') this.drawStairsUI(now, ptr);
+    if (this.state === 'omen') this.drawOmens(now, ptr);
     if (this.state === 'bag') this.drawBag(now, ptr);
     if (this.showMap && this.state !== 'bag') this.drawMap();
     if (this.state !== 'bag') {
@@ -1959,6 +2085,29 @@ export class Game {
     U.text('Spin. Fight. Loot. Upgrade. Die. Spin again.', W / 2, H - 8, { size: 9, align: 'center', color: '#a898a0', bold: false });
   }
 
+  drawOmens(now, ptr) {
+    const U = this.ui, W = this.W, H = this.H, g = U.g;
+    g.fillStyle = 'rgba(6,4,12,0.62)'; g.fillRect(0, 0, W, H);
+    U.text('CHOOSE AN OMEN', W / 2, 40, { size: 20, align: 'center', color: '#e8c070', spacing: 2 });
+    U.text('Each omen gives and takes. Refuse and walk on unmarked.', W / 2, 55, { size: 10, align: 'center', color: '#c8bca8', bold: false });
+    const n = this.omenOffer.length, tw = 150, th = 180, gap = 14;
+    const x0 = W / 2 - (n * tw + (n - 1) * gap) / 2, y0 = 70;
+    this.omenOffer.forEach((k, i) => {
+      const O = OMENS[k], x = x0 + i * (tw + gap);
+      const r = { x, y: y0, w: tw, h: th };
+      const hot = (ptr && this.inRect(ptr, r)) || this.omenFocus === i;
+      const lift = hot ? -4 : 0;
+      U.panel(x, y0 + lift, tw, th, { alpha: 0.95, border: hot ? '#e8c070' : '#4c4f5a', hi: hot ? '#ffe8a0' : '#6a6e7a' });
+      const bob = Math.sin(now * 2 + i) * 2;
+      U.icon(this.a.icons48[O.icon], x + tw / 2 - 32, y0 + 12 + lift + bob, 64);
+      U.text(O.name, x + tw / 2, y0 + 96 + lift, { size: 11, align: 'center', color: '#e8c070' });
+      U.wrap(O.desc, tw - 18, 9).forEach((l, j) => U.text(l, x + tw / 2, y0 + 112 + lift + j * 11, { size: 9, align: 'center', bold: false }));
+      U.text(`[${i + 1}]`, x + tw / 2, y0 + th - 8 + lift, { size: 9, align: 'center', color: '#8a8290' });
+      U.buttons.push({ id: 'omen:' + i, ...r });
+    });
+    U.button('omen:none', 'Refuse  [ESC]', W / 2 - 50, y0 + th + 12, 100, 18, ptr, { size: 11 });
+  }
+
   drawRewardUI(now, ptr) {
     const U = this.ui, W = this.W;
     const title = { chest: 'TREASURE!', loot: 'LOOT!', boss: 'VICTORY SPOILS', trove: 'TREASURE TROVE!', bonus: 'BONUS CARD!', hoard: 'MIMIC HOARD!' }[this.reward.source] || 'CHOOSE A CARD';
@@ -2041,6 +2190,7 @@ export class Game {
     if (P.venom) stats.push(`Venom +${P.venom}`);
     if (P.lifesteal) stats.push(`Lifesteal +${P.lifesteal}`);
     if (P.relics.size) stats.push(`Relics: ${[...P.relics].map(r => CARDS[r].name).join(', ')}`);
+    if (P.omen) stats.push(OMENS[P.omen].name);
     if (stats.length) U.text(stats.join('   '), W / 2, y0 + ph - 24, { size: 9, align: 'center', color: '#e8c070' });
     U.text(pay ? 'TAB / ESC: close' : 'TAB: paytable   ESC: close', x0 + pw - 10, y0 + ph - 7, { size: 8, align: 'right', color: '#8a8290', bold: false });
     U.button('close', 'Close', W / 2 - 30, y0 + ph - 17, 60, 13, ptr, { size: 9 });

@@ -79,6 +79,15 @@ const SFX = {
   starfall: A => { for (let i = 0; i < 5; i++) { A.tone(2093 - i * 180, 0.25, { vol: 0.05, type: 'sine', slide: 0.5, delay: i * 0.07 }); A.noise(0.1, { vol: 0.14, freq: 1400, delay: 0.05 + i * 0.07 }); } A.tone(98, 0.5, { vol: 0.16, type: 'sine', delay: 0.3 }); },
   prism: A => { A.tone(1047, 0.6, { vol: 0.06, type: 'sine' }); A.tone(1319, 0.6, { vol: 0.05, type: 'sine', delay: 0.03 }); A.tone(1568, 0.6, { vol: 0.05, type: 'sine', delay: 0.06 }); A.noise(0.5, { vol: 0.1, freq: 6000, q: 1 }); A.tone(220, 0.5, { vol: 0.08, type: 'sawtooth', slide: 2 }); },
   echo: A => { arp(A, [880, 1319, 1760], 0.05, { vol: 0.05, type: 'sine', dur: 0.3 }); arp(A, [880, 1319, 1760], 0.05, { vol: 0.025, type: 'sine', dur: 0.3, delay: 0.18 }); },
+  // ---- curios
+  mirror: A => { arp(A, [2637, 3136, 3951, 3136], 0.04, { vol: 0.04, type: 'sine', dur: 0.3 }); A.noise(0.2, { vol: 0.08, freq: 7000, q: 2 }); },
+  magnet: A => { A.tone(90, 0.5, { vol: 0.12, type: 'sawtooth', slide: 1.6 }); A.tone(93, 0.5, { vol: 0.1, type: 'sawtooth', slide: 1.6 }); SFX.coins(A); },
+  thorns: A => { A.noise(0.18, { vol: 0.22, freq: 900, q: 1.5, slide: 0.6 }); for (let i = 0; i < 4; i++) A.noise(0.04, { vol: 0.14, freq: 3200, q: 3, delay: 0.05 + i * 0.04 }); A.tone(150, 0.2, { vol: 0.08, type: 'triangle', slide: 0.6 }); },
+  horn: A => { A.tone(147, 0.9, { vol: 0.12, type: 'sawtooth', slide: 1.02, attack: 0.08 }); A.tone(220, 0.8, { vol: 0.08, type: 'sawtooth', attack: 0.1, delay: 0.05 }); A.tone(294, 0.6, { vol: 0.05, type: 'square', attack: 0.1, delay: 0.3 }); },
+  apple: A => { A.noise(0.08, { vol: 0.3, freq: 2400, q: 1 }); A.noise(0.06, { vol: 0.2, freq: 1800, q: 1, delay: 0.08 }); arp(A, [784, 988, 1319, 1568], 0.06, { vol: 0.06, type: 'triangle', dur: 0.3, delay: 0.1 }); },
+  drum: A => { for (let i = 0; i < 4; i++) { A.tone(90, 0.25, { vol: 0.3, type: 'sine', slide: 0.5, delay: i * 0.16 }); A.noise(0.1, { vol: 0.2, freq: 300, delay: i * 0.16 }); } },
+  // ---- enemy voices: every foe sounds like itself when it shows up, strikes, takes a hit and falls.
+  //      VOICES[kind] = { intro, attack, hurt, die } (each a function of the synth)
   // ---- the Rogue's summoned forest reels: a rustle of leaves and a wooden chime
   summon: A => { A.noise(0.5, { vol: 0.16, freq: 3500, q: 0.8, slide: 0.5 }); arp(A, [523, 659, 784, 1047], 0.06, { vol: 0.07, type: 'triangle', dur: 0.3 }); A.tone(196, 0.3, { vol: 0.12, type: 'sine', slide: 1.5 }); },
 };
@@ -100,6 +109,83 @@ export const SONGS = {
   grotto:  { bpm: 68, root: 48, scale: [0, 2, 3, 7, 8], prog: [0, 3, 0, 4], pad: 'sine', cut: 1400, bass: 'sine', lead: 'pluck', oct: 2, density: 0.36, perc: 'drip' },
   vault:   { bpm: 80, root: 53, scale: [0, 2, 4, 5, 7, 9, 11], prog: [0, 3, 4, 0], pad: 'organ', cut: 1500, bass: 'triangle', lead: 'bell', oct: 1, density: 0.34, perc: 'tick' },
   shop:    { bpm: 104, root: 55, scale: [0, 2, 4, 5, 7, 9, 11], prog: [0, 3, 4, 0], pad: 'triangle', cut: 1800, bass: 'triangle', lead: 'pluck', oct: 1, density: 0.55, perc: 'shaker' },
+};
+
+const gibber = (A, fs, step, o = {}) => fs.forEach((f, i) => A.tone(f, o.dur || 0.07, { vol: o.vol || 0.07, type: o.type || 'square', slide: o.slide || 0.85, delay: (o.delay || 0) + i * step }));
+export const VOICES = {
+  goblin: {
+    intro: A => gibber(A, [620, 780, 540, 860], 0.07),
+    attack: A => { gibber(A, [700, 520], 0.06, { vol: 0.06 }); SFX.slash(A); },
+    hurt: A => gibber(A, [900, 600], 0.05, { vol: 0.07, slide: 0.6 }),
+    die: A => gibber(A, [800, 640, 480, 320, 220], 0.08, { vol: 0.07, slide: 0.7 }),
+  },
+  merchant: { intro: A => gibber(A, [520, 660, 780], 0.08, { type: 'triangle' }) },
+  skeleton: {
+    intro: A => { for (let i = 0; i < 7; i++) A.noise(0.04, { vol: 0.18, freq: 1800 + Math.random() * 1500, q: 4, delay: i * 0.05 + Math.random() * 0.02 }); },
+    attack: A => { for (let i = 0; i < 4; i++) A.noise(0.04, { vol: 0.16, freq: 2200 + Math.random() * 1200, q: 4, delay: i * 0.04 }); SFX.slash(A); },
+    hurt: A => { A.noise(0.08, { vol: 0.3, freq: 2600, q: 3 }); A.tone(420, 0.06, { vol: 0.06, type: 'triangle' }); },
+    die: A => { for (let i = 0; i < 12; i++) A.noise(0.05, { vol: 0.2, freq: 1500 + Math.random() * 2500, q: 3, delay: i * 0.045 + Math.random() * 0.03 }); A.noise(0.12, { vol: 0.25, freq: 500, delay: 0.55 }); },
+  },
+  slime: {
+    intro: A => { A.tone(160, 0.3, { vol: 0.14, type: 'sine', slide: 2.4 }); A.noise(0.2, { vol: 0.12, freq: 500, q: 2, slide: 2 }); },
+    attack: A => { A.tone(120, 0.25, { vol: 0.2, type: 'sine', slide: 2.2 }); A.noise(0.18, { vol: 0.2, freq: 400, q: 1.5, slide: 0.5, delay: 0.12 }); },
+    hurt: A => { A.tone(300, 0.15, { vol: 0.14, type: 'sine', slide: 0.4 }); A.noise(0.12, { vol: 0.14, freq: 700, q: 2 }); },
+    die: A => { A.tone(260, 0.6, { vol: 0.16, type: 'sine', slide: 0.2 }); for (let i = 0; i < 5; i++) A.tone(200 + Math.random() * 200, 0.08, { vol: 0.06, type: 'sine', slide: 2, delay: 0.1 + i * 0.08 }); },
+  },
+  cultist: {
+    intro: A => { A.tone(110, 0.8, { vol: 0.08, type: 'sawtooth', slide: 0.98 }); A.tone(116, 0.8, { vol: 0.06, type: 'sawtooth' }); A.tone(165, 0.8, { vol: 0.05, type: 'sawtooth', delay: 0.1 }); },
+    attack: A => { A.tone(147, 0.4, { vol: 0.08, type: 'sawtooth', slide: 0.7 }); A.noise(0.3, { vol: 0.1, freq: 900, q: 4, slide: 0.5 }); },
+    hurt: A => A.tone(196, 0.18, { vol: 0.08, type: 'sawtooth', slide: 0.6 }),
+    die: A => { A.tone(165, 1.0, { vol: 0.1, type: 'sawtooth', slide: 0.3 }); A.noise(0.9, { vol: 0.12, freq: 600, q: 2, slide: 0.3 }); },
+  },
+  mimic: {
+    intro: A => { A.noise(0.1, { vol: 0.4, freq: 600 }); A.tone(70, 0.25, { vol: 0.25, slide: 0.5 }); gibber(A, [300, 240], 0.1, { vol: 0.08, delay: 0.15 }); },
+    attack: A => { A.noise(0.08, { vol: 0.5, freq: 800 }); A.tone(60, 0.2, { vol: 0.3, slide: 0.5 }); A.noise(0.06, { vol: 0.35, freq: 900, delay: 0.14 }); },
+    hurt: A => { A.noise(0.1, { vol: 0.3, freq: 420 }); A.tone(900, 0.1, { vol: 0.06, type: 'triangle' }); },
+    die: A => { A.noise(0.5, { vol: 0.3, freq: 700, q: 1, slide: 0.3 }); SFX.coinrain(A); },
+  },
+  wailer: {
+    intro: A => { A.tone(700, 0.9, { vol: 0.06, type: 'sine', slide: 1.5 }); A.tone(705, 0.9, { vol: 0.05, type: 'triangle', slide: 1.45 }); },
+    attack: A => { A.tone(900, 0.4, { vol: 0.06, type: 'sawtooth', slide: 0.5 }); A.noise(0.3, { vol: 0.12, freq: 2000, q: 2 }); },
+    hurt: A => A.tone(1200, 0.2, { vol: 0.05, type: 'sine', slide: 0.6 }),
+    die: A => { A.tone(1100, 1.4, { vol: 0.07, type: 'sine', slide: 0.15 }); A.tone(1108, 1.4, { vol: 0.05, type: 'triangle', slide: 0.15 }); A.noise(1.2, { vol: 0.06, freq: 3000, q: 1, slide: 0.2 }); },
+  },
+  tusker: {
+    intro: A => { A.noise(0.3, { vol: 0.3, freq: 300, q: 1.5, slide: 1.6 }); A.tone(90, 0.35, { vol: 0.2, type: 'sawtooth', slide: 0.8 }); },
+    attack: A => { A.noise(0.2, { vol: 0.35, freq: 260, q: 1.2 }); A.tone(80, 0.3, { vol: 0.24, type: 'sawtooth', slide: 0.6 }); SFX.chop(A); },
+    hurt: A => { A.noise(0.15, { vol: 0.3, freq: 350, q: 1.5, slide: 1.4 }); A.tone(130, 0.15, { vol: 0.14, type: 'sawtooth', slide: 0.7 }); },
+    die: A => { A.tone(110, 0.9, { vol: 0.22, type: 'sawtooth', slide: 0.35 }); A.noise(0.6, { vol: 0.3, freq: 200, type: 'lowpass', delay: 0.5 }); },
+  },
+  duskwing: {
+    intro: A => { for (let i = 0; i < 8; i++) A.noise(0.03, { vol: 0.12, freq: 900, q: 2, delay: i * 0.04 }); A.tone(3200, 0.12, { vol: 0.03, type: 'square', slide: 0.8 }); },
+    attack: A => { A.tone(3600, 0.1, { vol: 0.04, type: 'square', slide: 0.6 }); for (let i = 0; i < 5; i++) A.noise(0.03, { vol: 0.12, freq: 1000, q: 2, delay: i * 0.035 }); },
+    hurt: A => A.tone(4200, 0.08, { vol: 0.04, type: 'square', slide: 0.5 }),
+    die: A => { A.tone(3000, 0.4, { vol: 0.04, type: 'square', slide: 0.3 }); for (let i = 0; i < 6; i++) A.noise(0.03, { vol: 0.1, freq: 800, q: 2, delay: i * 0.07 }); },
+  },
+  warden: {
+    intro: A => { SFX.clank(A); A.tone(73, 0.9, { vol: 0.14, type: 'sawtooth', slide: 0.9 }); },
+    attack: A => { SFX.clank(A); SFX.heavy(A); },
+    hurt: A => { A.tone(620, 0.25, { vol: 0.07, type: 'triangle', slide: 0.9 }); A.tone(933, 0.2, { vol: 0.05, type: 'triangle' }); A.noise(0.08, { vol: 0.2, freq: 2400, q: 3 }); },
+    die: A => { for (let i = 0; i < 4; i++) { A.noise(0.12, { vol: 0.3, freq: 1600 - i * 250, q: 2, delay: i * 0.16 }); A.tone(500 - i * 60, 0.2, { vol: 0.06, type: 'triangle', delay: i * 0.16 }); } A.tone(55, 0.8, { vol: 0.2, type: 'sine', delay: 0.6 }); },
+  },
+  wickling: {
+    intro: A => { A.noise(0.5, { vol: 0.14, freq: 700, q: 0.8, slide: 1.8 }); crackle(A, 6, 0.4); },
+    attack: A => { SFX.fireball(A); },
+    hurt: A => { A.noise(0.15, { vol: 0.16, freq: 1200, q: 1 }); crackle(A, 4, 0.15); },
+    die: A => { A.noise(0.9, { vol: 0.2, freq: 800, q: 0.7, slide: 0.2 }); A.tone(400, 0.6, { vol: 0.05, type: 'sine', slide: 0.3 }); },
+  },
+  murk: {
+    intro: A => { for (let i = 0; i < 4; i++) A.tone(120 + i * 30, 0.14, { vol: 0.1, type: 'sine', slide: 1.8, delay: i * 0.1 }); },
+    attack: A => { A.tone(90, 0.3, { vol: 0.2, type: 'sine', slide: 2.4 }); A.noise(0.25, { vol: 0.18, freq: 500, q: 1.2, delay: 0.1 }); },
+    hurt: A => A.tone(200, 0.16, { vol: 0.12, type: 'sine', slide: 0.5 }),
+    die: A => { for (let i = 0; i < 6; i++) A.tone(160 - i * 15, 0.16, { vol: 0.08, type: 'sine', slide: 1.6, delay: i * 0.09 }); },
+  },
+  jester: {
+    intro: A => { gibber(A, [880, 1175, 988, 1319, 1047], 0.07, { type: 'triangle', vol: 0.06, slide: 1 }); for (let i = 0; i < 4; i++) A.tone(2637 + (i % 2) * 300, 0.06, { vol: 0.03, type: 'sine', delay: i * 0.06 }); },
+    attack: A => { gibber(A, [1319, 988], 0.06, { type: 'triangle', vol: 0.06, slide: 1 }); SFX.whoosh(A); A.noise(0.08, { vol: 0.3, freq: 700, delay: 0.18 }); },
+    hurt: A => gibber(A, [1568, 1175], 0.05, { type: 'triangle', vol: 0.06, slide: 0.8 }),
+    die: A => { gibber(A, [1319, 1175, 988, 784, 659, 523], 0.07, { type: 'triangle', vol: 0.06, slide: 0.9 }); for (let i = 0; i < 6; i++) A.tone(2637, 0.05, { vol: 0.03, type: 'sine', delay: 0.1 + i * 0.09 }); },
+  },
 };
 
 export class Audio {
@@ -280,6 +366,12 @@ export class Audio {
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     s.connect(f); f.connect(g); g.connect(this.master);
     s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
+  }
+
+  // an enemy's voice: voice('tusker', 'attack')
+  voice(kind, what) {
+    const v = this.ctx && VOICES[kind] && VOICES[kind][what];
+    if (v) v(this);
   }
 
   play(name) {

@@ -56,6 +56,13 @@ export const SYMBOLS = {
   powder_saber: { name: 'Powder Saber',     icon: 'powder_saber', rarity: 'rare',      dmg: 3, trigger: 0.35,  desc: 'Deal 3 damage. 35% chance its pistol barrel fires: +3.' },
   bulwark:      { name: 'Bulwark',          icon: 'bulwark',      rarity: 'rare',      armor: 3,               desc: 'Gain 3 Armor.' },
   ember_flask:  { name: 'Ember Flask',      icon: 'ember_flask',  rarity: 'rare',      heal: 5,                desc: 'Restore 5 HP.' },
+  // curios for every class (mirror: re-triggers its neighbour; magnet: +1 gold per Coin on the reels;
+  // thorns: the foe takes N whenever it strikes this fight; rally: +1 Might this fight; vigor: +1 Max HP)
+  mirror:       { name: 'Mirror Shard',     icon: 'mirror',       rarity: 'rare',      mirror: 1, desc: 'Reflects the symbol beside it: it triggers again.' },
+  lodestone:    { name: 'Lodestone',        icon: 'lodestone',    rarity: 'uncommon',  gold: 1, magnet: 1, desc: 'Gain 1 gold, +1 for every Coin on the reels.' },
+  thorn:        { name: 'Thorn Totem',      icon: 'thorn',        rarity: 'rare',      armor: 1, thorns: 2, desc: 'Gain 1 Armor. Thorns 2 this fight: the foe takes 2 whenever it strikes.' },
+  warhorn:      { name: 'War Horn',         icon: 'warhorn',      rarity: 'rare',      rally: 1, desc: '+1 Might for the rest of this fight. Stacks.' },
+  apple:        { name: 'Golden Apple',     icon: 'apple',        rarity: 'epic',      heal: 2, vigor: 1, desc: '+1 Max HP for the rest of the run, and heal 2.' },
   // the Mage's spells: they replace every melee weapon on a Mage run, and only a Mage ever finds them.
   // spell: counts as magic (Spellweaver echoes); sure: never misses; chill: the foe hits 1 softer for N turns;
   // freeze: chance the foe loses its attack; leech: heal N; arc: +1 per other spell on the reels
@@ -86,7 +93,7 @@ export const FAMILY = {
   chest: 'chest', mimic: 'chest',
   clover: 'clover', charm: 'clover',
   skull: 'skull', skull_cursed: 'skull',
-  bomb: 'bomb', dice: 'dice',
+  bomb: 'bomb', dice: 'dice', lodestone: 'coin', thorn: 'shield', apple: 'potion',
   spark: 'spell', bolt_arcane: 'spell', firebolt: 'spell', frost: 'spell', toxic: 'spell', chain: 'spell', fireball: 'spell',
   missiles: 'spell', drain: 'spell', icelance: 'spell', meteor: 'spell', void: 'spell', starfall: 'spell', prism: 'spell',
 };
@@ -127,6 +134,11 @@ export const SPECIAL_LINE = {
   scythe:       { name: 'HARVEST',      color: '#b07aff', desc: 'Reap the foe if it is below 50% HP, else 6 damage', short: 'Reap below 50% HP, else 6', hit: 1 },
   spiked:       { name: 'IRON MAIDEN',  color: '#9ab0d0', desc: '+1 Guard and 5 damage', short: '+1 Guard, 5 damage', hit: 1 },
   potion3:      { name: 'PANACEA',      color: '#ff7a9a', desc: 'Heal to full HP', short: 'Full heal' },
+  mirror:       { name: 'HALL OF MIRRORS', color: '#d8ecff', desc: 'Every symbol this spin triggers twice', short: 'Every symbol x2' },
+  lodestone:    { name: 'MOTHERLODE',   color: '#ffd24a', desc: '20 gold pulled out of the rock', short: '+20 gold' },
+  thorn:        { name: 'BRAMBLE WALL', color: '#8ad85a', desc: '+1 Guard and Thorns 6 this fight', short: '+1 Guard, Thorns 6' },
+  warhorn:      { name: 'WAR CRY',      color: '#ff9a5a', desc: '+1 Might for the rest of the run', short: '+1 Might for the run' },
+  apple:        { name: 'ORCHARD',      color: '#ffd060', desc: '+5 Max HP and heal fully', short: '+5 Max HP, full heal' },
   firebolt:     { name: 'FIRESTORM',    color: '#ff7a2a', desc: 'The foe burns for 6 turns', short: 'Ablaze for 6 turns' },
   frost:        { name: 'DEEP FREEZE',  color: '#8ad8ff', desc: 'The foe is frozen solid for 2 turns', short: 'Freeze for 2 turns' },
   toxic:        { name: 'PLAGUE',       color: '#8aff6a', desc: '8 Poison', short: '8 Poison' },
@@ -217,6 +229,22 @@ export const CARDS = {
                       desc: '+4 Max HP and heal fully.' },
   ember_core:       { name: 'Ember Core',       rarity: 'rare',      type: 'passive', relic: 'ember_core',
                       desc: 'Bombs, Flame Brands and fire spells deal +2 damage.' },
+  // curios + relics for every class
+  mirror_shard:     { name: 'Mirror Shard',     rarity: 'rare',      type: 'add',     sym: 'mirror' },
+  lodestone:        { name: 'Lodestone',        rarity: 'uncommon',  type: 'add',     sym: 'lodestone' },
+  thorn_totem:      { name: 'Thorn Totem',      rarity: 'rare',      type: 'add',     sym: 'thorn' },
+  war_horn:         { name: 'War Horn',         rarity: 'rare',      type: 'add',     sym: 'warhorn' },
+  golden_apple:     { name: 'Golden Apple',     rarity: 'epic',      type: 'add',     sym: 'apple' },
+  lucky_cat:        { name: 'Beckoning Cat',    rarity: 'rare',      type: 'passive', relic: 'lucky_cat',
+                      desc: 'Every Coin has a 20% chance to pay triple.' },
+  war_drum:         { name: 'War Drum',         rarity: 'epic',      type: 'passive', relic: 'war_drum',
+                      desc: 'The first spin of every fight: every symbol triggers twice.' },
+  hourglass:        { name: 'Sands of Time',    rarity: 'rare',      type: 'passive', relic: 'hourglass',
+                      desc: 'Every 5th spin of a fight is a free spin.' },
+  midas_glove:      { name: 'Midas Glove',      rarity: 'uncommon',  type: 'passive', relic: 'midas_glove',
+                      desc: 'Foes you defeat drop 50% more gold.' },
+  treasure_map:     { name: 'Treasure Map',     rarity: 'uncommon',  type: 'passive', relic: 'treasure_map',
+                      desc: 'Every chest on the floor is marked on your map, and chests hold 6 more gold.' },
   // spells (cls: only ever offered on a Mage run)
   arcane_spark:     { name: 'Arcane Spark',     rarity: 'common',    type: 'add',     sym: 'spark', cls: 'mage' },
   arcane_bolt:      { name: 'Arcane Bolt',      rarity: 'uncommon',  type: 'upgrade', from: ['spark'],            to: 'bolt_arcane', cls: 'mage' },
@@ -238,7 +266,8 @@ export const CARDS = {
 export const CARD_ICON = { horseshoe: 'horseshoe', heartstone: 'heartstone', whetstone: 'whetstone',
   holy_water: 'holy_water', four_leaf: 'clover4', pixie_jar: 'pixie_jar', ashen_plume: 'ashen_plume',
   trinity_sigil: 'trinity', hungry_idol: 'hungry_idol', blood_pact: 'blood_pact', heartfruit: 'heartfruit',
-  ember_core: 'ember_core' };
+  ember_core: 'ember_core', lucky_cat: 'lucky_cat', war_drum: 'war_drum', hourglass: 'hourglass', midas_glove: 'midas_glove',
+  treasure_map: 'treasure_map' };
 
 export const CARD_PRICE = { common: 8, uncommon: 14, rare: 22, epic: 34, legendary: 50 };
 
@@ -262,6 +291,18 @@ export const CLASSES = {
             passive: 'Spellweaver: casts spells, never steel. Every 4th spell echoes and casts twice.' },
 };
 export const CLASS_ORDER = ['knight', 'rogue', 'mage'];
+
+// Omens: run modifiers chosen at the start of a run - each one gives and takes.
+export const OMENS = {
+  greed:   { name: 'Omen of Greed',     icon: 'omen_greed',   desc: 'All gold +50%. Every foe has +25% HP.' },
+  glass:   { name: 'Omen of Glass',     icon: 'omen_glass',   desc: '+2 Might, but 30% less Max HP.' },
+  fortune: { name: 'Omen of Fortune',   icon: 'omen_fortune', desc: '+15% Luck. Merchants charge 30% more.' },
+  hoard:   { name: 'Omen of the Hoard', icon: 'omen_hoard',   desc: 'Every chest gives two card picks. Twice as many Mimics.' },
+  iron:    { name: 'Omen of Iron',      icon: 'omen_iron',    desc: '+2 Guard: every spin starts with 2 more Armor. -5 Max HP.' },
+  swarm:   { name: 'Omen of the Swarm', icon: 'omen_swarm',   desc: 'Two more foes on every floor. Every kill pays +3 gold.' },
+  frailty: { name: 'Omen of Frailty',   icon: 'omen_frailty', desc: '2 extra Curses in your reels, but Rare and better cards turn up far more often.' },
+  wild:    { name: 'Omen of the Wild',  icon: 'omen_wild',    desc: 'Start with a Wildcard in your reels. Foes hit 1 harder.' },
+};
 
 export const ENEMIES = {
   goblin:   { name: 'Goblin',   model: 'goblin',   hp: 7,  atk: 2, gold: [2, 4] },
