@@ -1,19 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926034648';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926034648';
+import { gl } from './gl.js?v=20260926035407';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926035407';
 const BOSS_SCALE = 2.1;
-import { Renderer, invert } from './render.js?v=20260926034648';
-import { SlotMachine } from './slot.js?v=20260926034648';
-import { CardView } from './cards.js?v=20260926034648';
-import { UI, SERIF } from './ui.js?v=20260926034648';
-import { Animator } from './anim.js?v=20260926034648';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926034648';
-import { is } from './input.js?v=20260926034648';
-import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926034648';
-import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
+import { Renderer, invert } from './render.js?v=20260926035407';
+import { SlotMachine } from './slot.js?v=20260926035407';
+import { CardView } from './cards.js?v=20260926035407';
+import { UI, SERIF } from './ui.js?v=20260926035407';
+import { Animator } from './anim.js?v=20260926035407';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926035407';
+import { is } from './input.js?v=20260926035407';
+import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926035407';
+import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, ROOMS, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
          BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926034648';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926035407';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -92,6 +92,10 @@ export class Game {
     if (q.has('map')) this.showMap = true;
     if (q.get('relics')) for (const r of q.get('relics').split(',')) if (CARDS[r]) this.applyCard(r);   // ?relics=war_drum,hourglass
     if (q.get('reels')) { const b = q.get('reels').split(',').filter(id => SYMBOLS[id]); if (b.length) this.player.bag = b; }  // ?reels=sword,mirror
+    if (q.get('room')) {                              // ?room=fountain|forge|blood_altar|gambler|scriptorium: stand before it
+      const r = this.entities.find(e => e.type === 'room');
+      if (r) { r.kind = q.get('room'); if (r.kind === 'gambler' && !r.animator) r.animator = this.makeAnimator('merchant'); this.teleportNextTo(r); }
+    }
     if (q.has('secret')) {                            // ?secret[=vault|shop|shrine]: stand at a cracked wall (&blast, &enter)
       if (!this.player.bag.includes('bomb')) this.player.bag.push('bomb');
       this.loadFloor(this.floor, this.runSeed + this.floor * 7919);
@@ -293,7 +297,8 @@ export class Game {
     const P = this.player;
     this.level = generate(floor, seed, { biome: biomeKey, mimics: om === 'hoard' ? 2 : 1, extraFoes: om === 'swarm' ? 2 : 0,
                                          bossReady: this.bossReady(biomeKey),
-                                         secret: !title && P && (P.bag.includes('bomb') || P.relics.has('demolition')) });
+                                         secret: !title && P && (P.bag.includes('bomb') || P.relics.has('demolition')),
+                                         room: !title });
     this.biome = BIOMES[this.level.biome];
     const built = build(this.level, this.a.models);
     this.static = built.batches;
@@ -334,7 +339,7 @@ export class Game {
       return ent;
     }
     const ent = { ...e, open: 0, opened: false };
-    if (e.type === 'merchant') ent.animator = this.makeAnimator('merchant');
+    if (e.type === 'merchant' || (e.type === 'room' && e.kind === 'gambler')) ent.animator = this.makeAnimator('merchant');
     if (e.type === 'chest' && this.player && this.player.relics.has('skeleton_key')) ent.mimic = false;
     return ent;
   }
@@ -406,6 +411,7 @@ export class Game {
     if (song !== this.songNow) { this.songNow = song; this.audio.song(song); }
     this.audio.intensity(this.combat ? 'combat' : 'explore');
     const wasBag = this.state === 'bag';
+    if (!wasBag && this.burnRoom) this.burnRoom = null;             // closed the scriptorium's page without burning
     switch (this.state) {
       case 'title': this.updateTitle(keys, clicks); break;
       case 'explore': this.updateExplore(dt, keys, clicks); break;
@@ -423,6 +429,7 @@ export class Game {
           const id = this.ui.hit(c);
           if (id === 'close') this.state = this.bagReturn;
           if (id && id.startsWith('page:')) this.bagPage = id.slice(5);
+          if (id && id.startsWith('burn:') && this.burnRoom) { this.burnSymbol(id.slice(5)); break; }
         }
         break;
       case 'dead': case 'won': this.updateEnd(keys, clicks); break;
@@ -530,6 +537,7 @@ export class Game {
       else if (e && e.type === 'chest' && !e.opened) what = 'Chest';
       else if (e && e.type === 'merchant') what = 'Merchant';
       else if (e && e.type === 'altar' && !e.opened) what = 'Altar';
+      else if (e && e.type === 'room' && !e.used) what = ROOMS[e.kind].name;
       else if (e && e.type === 'teleporter') what = 'Rune circle';
       else if (this.px + DX[d] === this.level.stairs.x && this.py + DY[d] === this.level.stairs.y) what = 'Stairs';
       out.push({ d, rel, what });
@@ -554,13 +562,14 @@ export class Game {
       if (ahead.type === 'chest' && !ahead.opened) { this.ask('chest', ahead); return; }
       if (ahead.type === 'merchant') { this.ask('merchant', ahead); return; }
       if (ahead.type === 'altar' && !ahead.opened) { this.ask('altar', ahead); return; }
+      if (ahead.type === 'room' && !ahead.used) { this.ask('room', ahead); return; }
       if (ahead.type === 'teleporter') { this.ask('teleport', ahead); return; }
     }
     const back = (this.dir + 2) % 4;
     const opts = this.choices().filter(c => {
       if (c.d === back) return false;
       const e = this.entityAt(this.px + DX[c.d], this.py + DY[c.d]);
-      return !(e && e.type === 'chest' && e.opened);
+      return !(e && ((e.type === 'chest' && e.opened) || (e.type === 'room' && e.used)));
     });
     const S = this.level.secret;
     if (opts.length === 0 && S && !S.open && this.px === S.x && this.py === S.y && this.dir === S.d) { this.ask('crack'); return; }
@@ -602,7 +611,8 @@ export class Game {
       this.prompt = null; this.blastWall(); return;
     }
     if (P.kind === 'teleport' && rel === 'use') { this.prompt = null; this.warp(P.ent); return; }
-    if (P.kind === 'chest' || P.kind === 'merchant' || P.kind === 'altar' || P.kind === 'crack' || P.kind === 'teleport') {
+    if (P.kind === 'room' && rel === 'use') { this.useRoom(P.ent); return; }
+    if (P.kind === 'chest' || P.kind === 'merchant' || P.kind === 'altar' || P.kind === 'crack' || P.kind === 'teleport' || P.kind === 'room') {
       if (rel === 'use') { this.prompt = null; this.interact(P.ent); return; }
       if (rel === 'back') {
         this.prompt = null;
@@ -628,7 +638,7 @@ export class Game {
   updatePrompt(keys, clicks) {
     const P = this.prompt;
     if (this.time - P.t0 < 0.12) return;
-    const use = ['chest', 'merchant', 'wayside', 'altar', 'crack', 'teleport'].includes(P.kind);
+    const use = ['chest', 'merchant', 'wayside', 'altar', 'crack', 'teleport', 'room'].includes(P.kind);
     for (const k of keys) {
       if (is(k, 'turnL') || is(k, 'strafeL')) this.choose('left');
       else if (is(k, 'turnR') || is(k, 'strafeR')) this.choose('right');
@@ -673,6 +683,103 @@ export class Game {
     else if (ent.type === 'chest' && !ent.opened) this.openChest(ent);
     else if (ent.type === 'merchant') this.openShop(ent);
     else if (ent.type === 'altar' && !ent.opened) { ent.opened = true; this.audio.play('rare_pick'); this.offerSecret(3); }
+  }
+
+  // =============================================================== the special room of the floor
+  roomCost(e) {
+    const P = this.player;
+    return { forge: 6 + this.floor, gambler: Math.floor(P.gold / 2) }[e.kind] || 0;
+  }
+
+  roomNote(e) {
+    const P = this.player, c = this.roomCost(e);
+    return {
+      fountain: 'Heals 40% of your health and washes off burns and spores',
+      forge: `${c} gold: the smith upgrades one of your symbols`,
+      blood_altar: P.maxHp > 10 ? 'Costs 4 max HP: take an Epic card or better' : 'You are too frail to bleed for it',
+      gambler: c >= 5 ? `Wager ${c} gold (half your purse): double it or lose it` : 'He wants at least 10 gold in your purse',
+      scriptorium: P.bag.length > 6 ? 'Burn one symbol from your reels - fewer, stronger spins' : 'Your reels are too thin to burn anything',
+    }[e.kind];
+  }
+
+  roomOk(e) {
+    const P = this.player, c = this.roomCost(e);
+    return { fountain: true, forge: P.gold >= c, blood_altar: P.maxHp > 10, gambler: c >= 5, scriptorium: P.bag.length > 6 }[e.kind];
+  }
+
+  useRoom(e) {
+    const P = this.player;
+    if (!this.roomOk(e)) { this.audio.play('deny'); return; }
+    this.prompt = null;
+    const [hx, hy] = this.slot.hpAnchor();
+    const cx = this.W / 2, cy = this.H * 0.32;
+    if (e.kind === 'fountain') {
+      e.used = true;
+      const h = Math.max(4, Math.round(P.maxHp * 0.4));
+      P.burnT = 0; P.spores = 0;
+      this.heal(h, hx, hy);
+      this.fxEvent('splash', cx, cy);
+      this.ui.toast(`The water is cold and clean (+${h} HP)`, this.time, '#8ad8ff', 2.4);
+    } else if (e.kind === 'forge') {
+      const ups = this.eligibleCards().filter(id => CARDS[id].type === 'upgrade');
+      P.gold -= this.roomCost(e);
+      this.slot.state.gold = P.gold;
+      e.used = true;
+      this.audio.play('clank');
+      if (!ups.length) {
+        P.might++;
+        this.ui.toast('Nothing to reforge - the smith hones your arm instead (+1 Might)', this.time, '#ffb060', 2.8);
+      } else {
+        for (let i = ups.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ups[i], ups[j]] = [ups[j], ups[i]]; }
+        this.reward = { ids: ups.slice(0, 3), source: 'forge' };
+        this.cards.show(this.reward.ids.map(id => ({ id })), this.time);
+        this.cards.keyFocus = -1;
+        this.state = 'reward';
+      }
+    } else if (e.kind === 'blood_altar') {
+      e.used = true;
+      P.maxHp -= 4;
+      P.hp = Math.min(P.hp, P.maxHp);
+      this.slot.state.maxHp = P.maxHp; this.slot.state.hp = P.hp;
+      this.audio.play('drain');
+      this.camShake = 0.8;
+      this.ui.toast('The altar drinks deep (-4 max HP)', this.time, '#ff5a5a', 2.4);
+      this.later(0.6, () => this.offerCards(3, 'altar', 'epic'));
+    } else if (e.kind === 'gambler') {
+      e.used = true;
+      const bet = this.roomCost(e);
+      this.fxEvent('dice', cx, cy);
+      this.anim(e, 'attack', { then: 'idle' });
+      this.later(0.9, () => {
+        if (Math.random() < 0.5 + Math.min(0.15, P.luck / 2)) {
+          this.gainGold(bet, cx, cy);
+          this.audio.play('coinrain');
+          this.ui.toast(`Double! You win ${bet} gold`, this.time, '#ffd24a', 2.4);
+        } else {
+          P.gold -= bet;
+          this.slot.state.gold = P.gold;
+          this.audio.play('cackle');
+          this.ui.toast(`Snake eyes - the gambler pockets your ${bet} gold`, this.time, '#ff8a6a', 2.6);
+        }
+      });
+    } else if (e.kind === 'scriptorium') {
+      this.burnRoom = e;                                     // the bag screen becomes the burning page
+      this.bagReturn = 'explore';
+      this.bagPage = 'reels';
+      this.state = 'bag';
+      this.audio.play('card');
+    }
+  }
+
+  burnSymbol(id) {
+    const P = this.player, e = this.burnRoom;
+    P.bag.splice(P.bag.indexOf(id), 1);
+    e.used = true;
+    this.burnRoom = null;
+    this.state = 'explore';
+    this.fxEvent('burnTick', this.W / 2, this.H * 0.32);
+    this.ui.toast(`The ${SYMBOLS[id].name} burns out of your reels`, this.time, '#ffb060', 2.4);
+    this.autoAt = this.time + 0.4;
   }
 
   // =============================================================== cracked walls / secret rooms
@@ -2091,6 +2198,7 @@ export class Game {
       if (e.type === 'enemy') this.drawEnemy(e, now);
       else if (e.type === 'chest') this.drawChest(e, now);
       else if (e.type === 'merchant') this.drawMerchant(e, now);
+      else if (e.type === 'room') this.drawRoom(e, now);
       else if (e.type === 'teleporter') {
         this.R.drawModel(this.a.models.teleporter, trs(e.x * CELL, 0, e.y * CELL, 0, 0, 0, 1),
           { pose: { crystal: { ry: now * 1.3, ty: Math.sin(now * 2) * 0.06 } } });
@@ -2124,6 +2232,18 @@ export class Game {
     const mats = e.animator ? e.animator.matrices() : null;
     const texOverride = e.def.tex ? { ['bake_' + e.def.model]: this.R.tex(e.def.tex) } : null;   // a boss's biome recolour
     this.R.drawModel(model, m, { mats, pose: mats ? null : undefined, flash, alpha, tint, texOverride });
+  }
+
+  drawRoom(e, now) {
+    const yaw = Math.atan2(DX[e.face], DY[e.face]);
+    this.R.drawModel(this.a.models[ROOMS[e.kind].model], trs(e.x * CELL, 0, e.y * CELL, yaw, 0, 0, 1),
+      { tint: e.used ? [0.6, 0.58, 0.62] : [1, 1, 1] });
+    if (e.kind === 'gambler') {                             // the gambler sits behind his table
+      const bx = e.x * CELL - DX[e.face] * 0.62, bz = e.y * CELL - DY[e.face] * 0.62;
+      const gy = Math.atan2(this.cam.x - bx, this.cam.z - bz);
+      this.R.drawModel(this.a.models.merchant, trs(bx, 0, bz, gy, 0, 0, ENEMY_SCALE * 0.9),
+        { mats: e.animator ? e.animator.matrices() : null, hide: new Set(['weapon']), tint: [0.85, 1.05, 0.85] });
+    }
   }
 
   drawChest(c, now) {
@@ -2339,6 +2459,15 @@ export class Game {
     const P = this.prompt;
     const top = this.slot.screenTop;
     const pop = clamp((now - P.t0) / 0.18, 0, 1);
+    if (P.kind === 'room') {
+      const R = ROOMS[P.ent.kind], ok = this.roomOk(P.ent);
+      U.text(R.prompt, W / 2, top * 0.2, { size: 14, align: 'center', color: '#a8e8ff', alpha: pop });
+      U.text(this.roomNote(P.ent), W / 2, top * 0.2 + 14, { size: 10, align: 'center', color: ok ? '#ffd878' : '#ff8a6a', alpha: pop, bold: false });
+      const bw = 150, by = top - 34;
+      U.button('go:use', `${R.action}  [W]`, W / 2 - bw - 6, by, bw, 22, ptr, { size: 12, fill: ok ? '#1c4a6a' : '#3a3440', hotFill: ok ? '#2a6a8e' : '#3a3440' });
+      U.button('go:back', 'Turn back  [S]', W / 2 + 6, by, bw, 22, ptr, { size: 12 });
+      return;
+    }
     if (P.kind === 'crack' || P.kind === 'teleport' || P.kind === 'altar') {
       const back = P.kind === 'teleport' && P.ent.back;
       const t = P.kind === 'crack' ? 'The wall here is cracked...' : P.kind === 'altar' ? 'An altar holds treasures no one else will find.'
@@ -2553,7 +2682,8 @@ export class Game {
     const pay = this.bagPage === 'pay';
     U.button('page:reels', `YOUR REELS (${P.bag.length})`, W / 2 - 134, y0 + 7, 130, 18, ptr, { size: 10, focus: !pay });
     U.button('page:pay', 'PAYTABLE', W / 2 + 4, y0 + 7, 130, 18, ptr, { size: 10, focus: pay });
-    if (pay) this.drawPaytable(x0, y0 + 32, pw); else this.drawReelList(x0, y0 + 32, pw);
+    if (pay) this.drawPaytable(x0, y0 + 32, pw); else this.drawReelList(x0, y0 + 32, pw, ptr);
+    if (this.burnRoom && !pay) U.text('THE SCRIPTORIUM: choose a symbol to burn from your reels', W / 2, y0 + ph - 38, { size: 10, align: 'center', color: '#ffb060' });
     const stats = [];
     if (P.might) stats.push(`Might +${P.might}`);
     if (P.guard) stats.push(`Guard +${P.guard}`);
@@ -2569,7 +2699,7 @@ export class Game {
     U.button('close', 'Close', W / 2 - 30, y0 + ph - 17, 60, 13, ptr, { size: 9 });
   }
 
-  drawReelList(x0, y0, pw) {
+  drawReelList(x0, y0, pw, ptr) {
     const U = this.ui, P = this.player;
     const counts = {};
     for (const s of P.bag) counts[s] = (counts[s] || 0) + 1;
@@ -2581,6 +2711,7 @@ export class Game {
       U.icon(this.a.icons48[s.icon], cx, cy, 22);
       U.text(`${counts[id]}x ${s.name}`, cx + 26, cy + 9, { size: 10, color: RARITY[s.rarity].color === '#8b919c' ? '#f2ead8' : RARITY[s.rarity].color });
       U.text(s.desc, cx + 26, cy + 19, { size: 7, bold: false, color: '#cfc4b0' });
+      if (this.burnRoom) U.button('burn:' + id, 'Burn', cx + pw / cols - 56, cy + 1, 40, 14, ptr, { size: 8, fill: '#6a2a14', hotFill: '#9a3a1a' });
     });
   }
 
@@ -2624,7 +2755,7 @@ export class Game {
     if (this.explored.has(`${L.stairs.x},${L.stairs.y}`)) { g.fillStyle = '#5a9aff'; g.fillRect(x0 + L.stairs.x * cs, y0 + L.stairs.y * cs, cs, cs); }
     for (const e of this.entities) {
       if (e.gone || e.alive === false || (!e.wayside && !this.explored.has(`${e.x},${e.y}`))) continue;   // the merchant is always marked
-      g.fillStyle = e.type === 'enemy' ? '#e04040' : e.type === 'chest' ? '#e0b040' : e.type === 'teleporter' || e.type === 'altar' ? '#c890ff' : '#60e060';
+      g.fillStyle = e.type === 'enemy' ? '#e04040' : e.type === 'chest' ? '#e0b040' : e.type === 'teleporter' || e.type === 'altar' ? '#c890ff' : e.type === 'room' ? '#50d8e8' : '#60e060';
       g.fillRect(x0 + e.x * cs + 1, y0 + e.y * cs + 1, cs - 2, cs - 2);
     }
     const S = L.secret;

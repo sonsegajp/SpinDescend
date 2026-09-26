@@ -993,6 +993,18 @@ export const EVENTS = {
     fx.burst(x, y, { n: 30, speed: [140, 340], life: [0.7, 1.2], size: [3, 6], shape: 'shard', col: ['#4a4652', '#6a6270', '#8a8090'], g: 520, spin: 3 });
     S.shake(2.2); S.play('explode');
   },
+  // a draught from the fountain: cool light and droplets
+  splash(fx, x, y, S) {
+    fx.glow(x, y, 60, 0.7, 'rgba(110,190,255,1)', 1.5);
+    fx.ring(x, y, 6, 90, 0.5, '#8ad8ff', 3);
+    fx.burst(x, y, { n: 40, speed: [60, 200], life: [0.6, 1.1], size: [1.5, 3], shape: 'bubble', col: ['#8ad8ff', '#d8f4ff', '#4aa8e8'], g: 260, dir: -Math.PI / 2, spread: 1.2 });
+    S.play('bigheal');
+  },
+  // the gambler's dice tumble
+  dice(fx, x, y, S) {
+    fx.burst(x, y, { n: 6, speed: [120, 220], life: [0.6, 0.9], size: [5, 6], shape: 'shard', col: ['#f0ece0'], g: 500, spin: 5, dir: -Math.PI / 2, spread: 1.4 });
+    S.play('dice');
+  },
   // stepping into a rune circle: a violet flare, rings and rising motes
   warp(fx, x, y, S) {
     fx.flash('#c890ff', 0.4, 0.7);

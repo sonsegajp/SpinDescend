@@ -3,9 +3,9 @@
 //
 // Grid: cell (x, y) is centred at world (x*CELL, 0, y*CELL); y grows toward +Z.
 // Directions: 0 = north (-Z), 1 = east (+X), 2 = south (+Z), 3 = west (-X).
-import { rng, trs } from './math.js?v=20260926034648';
-import { Batcher } from './gl.js?v=20260926034648';
-import { BIOMES, ELITES, BOSSES, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926034648';
+import { rng, trs } from './math.js?v=20260926035407';
+import { Batcher } from './gl.js?v=20260926035407';
+import { BIOMES, ELITES, BOSSES, ROOMS, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926035407';
 
 export const CELL = 2.0;
 export const WALL_H = 2.6;
@@ -168,36 +168,52 @@ export function generate(floor, seed, opts = {}) {
   }
   // a cracked wall (only when you carry a bomb, or the Demolition Charge): at the end of a free dead end, the
   // solid cell straight ahead hides a rune circle - blow the wall and it leads to a secret room
+  // a one-cell spur dug off a corridor (every neighbour but the corridor solid); alcove: the cell beyond it too
+  const digSpur = (alcove) => {
+    const found = [];
+    for (const [x, y] of cells) {
+      if (occupied.has(key(x, y)) || dist[y * W + x] < 2) continue;
+      for (let d = 0; d < 4; d++) {
+        const sx = x + DX[d], sy = y + DY[d], ax = sx + DX[d], ay = sy + DY[d];
+        const inside = (u, v) => u >= 1 && v >= 1 && u <= W - 2 && v <= H - 2;
+        if (!inside(sx, sy) || at(sx, sy)) continue;
+        if (alcove && (!inside(ax, ay) || at(ax, ay))) continue;
+        if ([0, 1, 2, 3].some(k => k !== (d + 2) % 4 && at(sx + DX[k], sy + DY[k]))) continue;
+        found.push({ x: sx, y: sy, d, ax, ay, from: y * W + x });
+      }
+    }
+    if (!found.length) return null;
+    const c = R.pick(found);
+    g[c.y * W + c.x] = 1;
+    dist[c.y * W + c.x] = dist[c.from] + 1;
+    delete c.from;
+    return c;
+  };
   let secret = null;
   if (opts.secret) {
     const cand = deadEndsAll.filter(([x, y]) => !occupied.has(key(x, y)) && !(x === start.x && y === start.y) &&
                                                 !(x === stairs.x && y === stairs.y))
       .map(([x, y]) => { const d = (exits(x, y)[0] + 2) % 4; return { x, y, d, ax: x + DX[d], ay: y + DY[d] }; })
       .filter(s => s.ax > 0 && s.ay > 0 && s.ax < W - 1 && s.ay < H - 1 && !at(s.ax, s.ay));
-    if (!cand.length) {             // no free dead end: dig a one-cell spur off a corridor and crack its end wall
-      for (const [x, y] of cells) {
-        if (occupied.has(key(x, y)) || dist[y * W + x] < 2) continue;
-        for (let d = 0; d < 4; d++) {
-          const sx = x + DX[d], sy = y + DY[d], ax = sx + DX[d], ay = sy + DY[d];
-          if (sx < 1 || sy < 1 || sx > W - 2 || sy > H - 2 || ax < 1 || ay < 1 || ax > W - 2 || ay > H - 2) continue;
-          if (at(sx, sy) || at(ax, ay)) continue;
-          if ([0, 1, 2, 3].some(k => k !== (d + 2) % 4 && at(sx + DX[k], sy + DY[k]))) continue;
-          cand.push({ x: sx, y: sy, d, ax, ay, from: [x, y] });
-        }
-      }
-      if (cand.length) {
-        const c = R.pick(cand);
-        cand.length = 0;
-        cand.push(c);
-        g[c.y * W + c.x] = 1;
-        dist[c.y * W + c.x] = dist[c.from[1] * W + c.from[0]] + 1;
-        delete c.from;
-      }
+    if (!cand.length) {             // no free dead end: dig a spur off a corridor and crack its end wall
+      const c = digSpur(true);
+      if (c) cand.push(c);
     }
     if (cand.length) {
       secret = R.pick(cand);
       secret.kind = R.pick(['vault', 'shop', 'shrine']);
       occupied.add(key(secret.x, secret.y));
+    }
+  }
+  // the special room: a set-piece in a free dead end (or a dug spur)
+  if (opts.room) {
+    const free = deadEndsAll.filter(([x, y]) => !occupied.has(key(x, y)) && exits(x, y).length === 1 && dist[y * W + x] >= 2 &&
+                                                !(x === start.x && y === start.y) && !(x === stairs.x && y === stairs.y));
+    let cell = free.length ? R.pick(free) : null;
+    if (!cell) { const c = digSpur(false); if (c) cell = [c.x, c.y]; }
+    if (cell) {
+      occupied.add(key(cell[0], cell[1]));
+      entities.push({ type: 'room', kind: R.pick(Object.keys(ROOMS)), x: cell[0], y: cell[1], face: faceOpen(cell[0], cell[1]) });
     }
   }
   return { floor, biome, W, H, grid: g, at, exits, start, stairs, entities, dist, occupied, seed, secret };
@@ -529,6 +545,9 @@ export function build(level, models) {
       const cx = (W - 1) * CELL / 2 + Math.cos(a) * r, cz = (H - 1) * CELL / 2 + Math.sin(a) * r;
       put(R.pick(['ruin_tower0', 'ruin_tower1']), cx, -0.5, cz, R() * 6, 1 + R() * 0.8);
     }
+  }
+  for (const e of level.entities) {
+    if (e.type === 'room') lights.push({ pos: [e.x * CELL, 1.3, e.y * CELL], col: ROOMS[e.kind].light, radius: 3.8, flicker: e.kind === 'forge' ? 3 : 0 });
   }
   if (S) {
     crackBat.add(models.crack_wall, trs(sEdge[0], 0, sEdge[1], wallRot(S.d), 0, 0, 1));

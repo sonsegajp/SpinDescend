@@ -289,6 +289,20 @@ export const CARD_ICON = { horseshoe: 'horseshoe', heartstone: 'heartstone', whe
   phoenix_egg: 'phoenix_egg', skeleton_key: 'skeleton_key', fools_gold: 'fools_gold', philosopher_stone: 'philosopher_stone',
   eye_of_depths: 'eye_of_depths' };
 
+// The special room of every floor: a set-piece in a dead end (its model, the colour of its light, the prompt)
+export const ROOMS = {
+  fountain:    { name: 'Fountain',    model: 'fountain',      light: [0.35, 0.75, 1.3],
+                 prompt: 'A fountain of glowing water babbles here.', action: 'Drink' },
+  forge:       { name: 'Forge',       model: 'forge',         light: [1.4, 0.6, 0.2],
+                 prompt: 'An old forge - its coals still burn.', action: 'Work the anvil' },
+  blood_altar: { name: 'Blood Altar', model: 'blood_altar',   light: [1.3, 0.12, 0.12],
+                 prompt: 'A blood altar hungers for an offering.', action: 'Bleed on it' },
+  gambler:     { name: 'Gambler',     model: 'gambler_table', light: [1.2, 0.9, 0.45],
+                 prompt: 'A goblin gambler rattles his dice at you.', action: 'Wager' },
+  scriptorium: { name: 'Scriptorium', model: 'lectern',       light: [0.5, 0.62, 1.3],
+                 prompt: 'A lectern holds a book of burning words.', action: 'Read' },
+};
+
 export const CARD_PRICE = { common: 8, uncommon: 14, rare: 22, epic: 34, legendary: 50, secret: 40 };
 
 // The Knight's starting reel bag ("Balanced").
