@@ -1,19 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926000506';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926000506';
+import { gl } from './gl.js?v=20260926001701';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926001701';
 const BOSS_SCALE = 2.1;
-import { Renderer, invert } from './render.js?v=20260926000506';
-import { SlotMachine } from './slot.js?v=20260926000506';
-import { CardView } from './cards.js?v=20260926000506';
-import { UI, SERIF } from './ui.js?v=20260926000506';
-import { Animator } from './anim.js?v=20260926000506';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926000506';
-import { is } from './input.js?v=20260926000506';
-import { generate, build, CELL, DX, DY } from './level.js?v=20260926000506';
+import { Renderer, invert } from './render.js?v=20260926001701';
+import { SlotMachine } from './slot.js?v=20260926001701';
+import { CardView } from './cards.js?v=20260926001701';
+import { UI, SERIF } from './ui.js?v=20260926001701';
+import { Animator } from './anim.js?v=20260926001701';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926001701';
+import { is } from './input.js?v=20260926001701';
+import { generate, build, CELL, DX, DY } from './level.js?v=20260926001701';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
          BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926000506';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926001701';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -438,6 +438,23 @@ export class Game {
     }
     const menu = this.titleMenu();
     this.menuFocus = Math.min(this.menuFocus, menu.length - 1);
+    // the Konami code: up up down down left right left right B A unlocks everything
+    const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyA'];
+    for (const k of keys) {
+      this.konami = (this.konami || 0);
+      this.konami = k === KONAMI[this.konami] ? this.konami + 1 : (k === KONAMI[0] ? 1 : 0);
+      if (this.konami === KONAMI.length) {
+        this.konami = 0;
+        this.progress.best = Math.max(this.progress.best, 99);
+        saveProgress(this.progress);
+        this.titleKnight = null;
+        this.ui.toast('KONAMI! Everything is unlocked.', this.time, '#ffd878', 3.5);
+        this.audio.play('legend_pick');
+        this.fx.flash('#ffe8a0', 0.4, 0.5);
+        EVENTS.card(this.fx, this.W * 0.66, this.H * 0.45, this.fxCtx(null), '#ffd24a', 4);
+        return;
+      }
+    }
     for (const k of keys) {
       if (is(k, 'confirm')) this.titleAction(menu[this.menuFocus]);
       if (is(k, 'back')) this.menuFocus = Math.min(menu.length - 1, this.menuFocus + 1);
