@@ -303,6 +303,16 @@ export const ROOMS = {
                  prompt: 'A lectern holds a book of burning words.', action: 'Read' },
 };
 
+// Enemies read your build: from floor 3 a foe may come adapted to the symbol family your reels lean on
+export const ADAPT = {
+  blade:  { name: 'Thick Hide', desc: 'your blades deal 1 less', col: '#d8b888' },
+  shield: { name: 'Sunder',     desc: 'its blows ignore 2 of your Armor', col: '#9ab8ff' },
+  potion: { name: 'Grievous',   desc: 'your healing is halved', col: '#ff6a8a' },
+  coin:   { name: 'Pickpocket', desc: 'every hit steals 3 of your gold', col: '#ffd24a' },
+  bomb:   { name: 'Fireproof',  desc: 'bombs and burns deal 2 less', col: '#ff8a3a' },
+  spell:  { name: 'Warded',     desc: 'a 6-point ward soaks your first hits', col: '#c8a0ff' },
+};
+
 export const CARD_PRICE = { common: 8, uncommon: 14, rare: 22, epic: 34, legendary: 50, secret: 40 };
 
 // The Knight's starting reel bag ("Balanced").

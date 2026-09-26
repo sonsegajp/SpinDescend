@@ -1,19 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926035407';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926035407';
+import { gl } from './gl.js?v=20260926035806';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926035806';
 const BOSS_SCALE = 2.1;
-import { Renderer, invert } from './render.js?v=20260926035407';
-import { SlotMachine } from './slot.js?v=20260926035407';
-import { CardView } from './cards.js?v=20260926035407';
-import { UI, SERIF } from './ui.js?v=20260926035407';
-import { Animator } from './anim.js?v=20260926035407';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926035407';
-import { is } from './input.js?v=20260926035407';
-import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926035407';
-import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, ROOMS, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
+import { Renderer, invert } from './render.js?v=20260926035806';
+import { SlotMachine } from './slot.js?v=20260926035806';
+import { CardView } from './cards.js?v=20260926035806';
+import { UI, SERIF } from './ui.js?v=20260926035806';
+import { Animator } from './anim.js?v=20260926035806';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926035806';
+import { is } from './input.js?v=20260926035806';
+import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926035806';
+import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, ROOMS, ADAPT, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
          BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926035407';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926035806';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -92,6 +92,10 @@ export class Game {
     if (q.has('map')) this.showMap = true;
     if (q.get('relics')) for (const r of q.get('relics').split(',')) if (CARDS[r]) this.applyCard(r);   // ?relics=war_drum,hourglass
     if (q.get('reels')) { const b = q.get('reels').split(',').filter(id => SYMBOLS[id]); if (b.length) this.player.bag = b; }  // ?reels=sword,mirror
+    if (q.has('rescale')) {                           // ?rescale: reload the floor so the scaling reads ?reels/?relics (every foe adapts)
+      this.forceAdapt = true;
+      this.loadFloor(this.floor, this.runSeed + this.floor * 7919);
+    }
     if (q.get('room')) {                              // ?room=fountain|forge|blood_altar|gambler|scriptorium: stand before it
       const r = this.entities.find(e => e.type === 'room');
       if (r) { r.kind = q.get('room'); if (r.kind === 'gambler' && !r.animator) r.animator = this.makeAnimator('merchant'); this.teleportNextTo(r); }
@@ -211,6 +215,7 @@ export class Game {
     this.slot.summonPods(false);
     this.slot.setTheme({ mage: 'arcane', knight: 'knight', rogue: 'forest' }[this.cls] || 'classic');
     this.slot.setStatic([[K.bag[0], 'shield', 'potion'], ['coin', 'skull', 'chest']]);
+    this.player.base = this.buildPower();
     this.loadFloor(1, this.runSeed + 1);
     this.fadeIn();
     // an omen before the first step: three offered, take one or refuse
@@ -219,6 +224,40 @@ export class Game {
     this.omenOffer = keys;
     this.omenFocus = -1;
     this.state = 'omen';
+  }
+
+  // =============================================================== adaptive scaling
+  // what the player's build is worth per spin: expected damage and defence from 6 cells drawn off the reels,
+  // how tough they are overall, and the symbol family the reels lean on (if any)
+  buildPower() {
+    const P = this.player, bag = P.bag, n = Math.max(1, bag.length), cells = 6;
+    let off = 0, def = 0;
+    const fam = {};
+    for (const id of bag) {
+      const s = SYMBOLS[id];
+      if (!s) continue;
+      const hits = s.hits || 1;
+      const base = s.dmgRoll ? (s.dmgRoll[0] + s.dmgRoll[1]) / 2 : (s.dmg || 0);
+      if (base) off += (base + P.might) * hits * (1 + (s.crit || 0) + (s.twice || 0)) + (s.aoe ? 2 * P.blast : 0);
+      off += (s.poison || 0) * 2 + (s.burn || 0) * 1.5;
+      def += (s.armor || 0) + (s.heal || 0) + (s.vamp || 0) * 0.5 + (s.thorns || 0) * 0.5;
+      const f = FAMILY[id];
+      if (f) fam[f] = (fam[f] || 0) + 1;
+    }
+    off = off * cells / n;
+    def = def * cells / n + P.guard;
+    let lean = null;
+    for (const [f, c] of Object.entries(fam)) if (ADAPT[f] && c >= 4 && c / n >= 0.3 && (!lean || c > fam[lean])) lean = f;
+    return { off, tough: P.maxHp + def * 4, lean };
+  }
+
+  // how much stronger than the expected curve the player has grown -> enemy HP and attack for this floor
+  scaling() {
+    const P = this.player;
+    if (!P || !P.base) return { hp: 1, atk: 0, lean: null };
+    const now = this.buildPower(), g = 1 + 0.16 * (this.floor - 1);
+    const ro = now.off / Math.max(0.5, P.base.off * g), rt = now.tough / Math.max(1, P.base.tough * g);
+    return { hp: clamp(1 + (ro - 1) * 0.5, 0.9, 1.45), atk: clamp(Math.round((rt - 1) * 1.5), 0, 3), lean: now.lean };
   }
 
   // a biome's boss hall opens once its boss model ships (until then level 4 is a normal level)
@@ -300,6 +339,9 @@ export class Game {
                                          secret: !title && P && (P.bag.includes('bomb') || P.relics.has('demolition')),
                                          room: !title });
     this.biome = BIOMES[this.level.biome];
+    this.floorScale = title ? null : this.scaling();
+    if (this.floorScale && (this.floorScale.hp >= 1.15 || this.floorScale.atk >= 1))
+      this.later(3.2, () => this.ui.toast(`The depths have taken your measure: foes here are ${this.floorScale.hp >= 1.15 ? 'tougher' : ''}${this.floorScale.hp >= 1.15 && this.floorScale.atk ? ' and ' : ''}${this.floorScale.atk ? 'hit harder' : ''}`, this.time, '#ff9a7a', 3));
     const built = build(this.level, this.a.models);
     this.static = built.batches;
     this.lights = built.lights;
@@ -331,11 +373,16 @@ export class Game {
         def = { ...B, model: this.a.models[B.kind] ? B.kind : 'goblin', boss: true };
       }
       const mult = 1 + (this.floor - 1) * 0.1;             // 16 floors: 4 biomes x 4 levels
-      const hp = Math.round(def.hp * mult * (e.elite ? 1.7 : 1));
-      const ent = { ...e, def, hp, maxHp: hp, atk: def.atk + Math.floor((this.floor - 1) / 5) + (e.elite ? 1 : 0),
+      const sc = this.floorScale || { hp: 1, atk: 0, lean: null };  // ...and to the player's own build
+      const hp = Math.round(def.hp * mult * sc.hp * (e.elite ? 1.7 : 1));
+      const ent = { ...e, def, hp, maxHp: hp, atk: def.atk + Math.floor((this.floor - 1) / 5) + (e.elite ? 1 : 0) + sc.atk,
                poison: 0, burn: 0, stunTurns: 0, alive: true, flash: 0, advance: 0, turn: 0, fadeOut: 0, shell: 0,
                phase: Math.random() * 6, scale: ENEMY_SCALE * (e.boss ? BOSS_SCALE * (def.size || 1) : e.elite ? 1.3 : 1) };
       ent.animator = this.makeAnimator(def.model);
+      if (sc.lean && this.floor >= 3 && (e.boss || e.elite || this.forceAdapt || Math.random() < 0.35)) {
+        ent.adapt = sc.lean;
+        if (sc.lean === 'spell') ent.shell = (ent.shell || 0) + 6;
+      }
       return ent;
     }
     const ent = { ...e, open: 0, opened: false };
@@ -912,6 +959,7 @@ export class Game {
       this.later(1.2, () => this.warnAbility());
     } else this.ui.toast(`${e.elite ? 'Elite ' : ''}${def.name} attacks!`, this.time, '#ff8a6a');
     this.audio.voice(e.kind, 'intro');
+    if (e.adapt) this.later(0.8, () => this.ui.toast(`It has adapted to your reels - ${ADAPT[e.adapt].name}: ${ADAPT[e.adapt].desc}`, this.time, ADAPT[e.adapt].col, 3));
     const P = this.player;
     if (P.relics.has('cursed_crown') && P.hp > 1) {
       P.hp = Math.max(1, P.hp - 2);
@@ -1359,6 +1407,8 @@ export class Game {
         this.fxEvent('block', ...this.enemyScreen(0.5));
       }
       if (s.pierce && e.def.armor) this.ui.float('Cleave!', ...this.enemyScreen(0.5), '#ffb08a', this.time, { size: 12, dy: -18 });
+      if (e.adapt === 'blade' && FAMILY[id] === 'blade' && dmg > 0) dmg = Math.max(1, dmg - 1);
+      if (e.adapt === 'bomb' && (s.aoe || s.burn) && dmg > 0) dmg = Math.max(1, dmg - 2);
       I.crit = crit; I.dmg = dmg;
       for (let h = 0; h < (s.hits || 1) && e.alive; h++) this.damageEnemy(dmg, crit);
       if (dmg > 0) C.dealt++;
@@ -1531,6 +1581,7 @@ export class Game {
 
   heal(n, ax, ay) {
     const P = this.player;
+    if (this.combat && this.combat.e.adapt === 'potion') n = Math.ceil(n / 2);     // Grievous
     const before = P.hp;
     P.hp = Math.min(P.maxHp, P.hp + n);
     this.slot.state.hp = P.hp;
@@ -1556,7 +1607,7 @@ export class Game {
       if (e.hp <= 0) { this.killEnemy(); return; }
     }
     if (e.burn > 0) {
-      e.hp -= 2; e.burn--;
+      e.hp -= e.adapt === 'bomb' ? 1 : 2; e.burn--;
       e.flash = 0.7;
       const [x, y] = this.enemyScreen(0.7);
       this.ui.float('-2 burn', x + 14, y, '#ff8a3a', this.time, { size: 13 });
@@ -1668,7 +1719,7 @@ export class Game {
       const [x, y] = this.enemyScreen(0.9);
       this.ui.float('Chilled -1', x, y, '#a8e8ff', this.time, { size: 12 });
     }
-    const absorbed = Math.min(P.armor, dmg);
+    const absorbed = Math.min(Math.max(0, P.armor - (e.adapt === 'shield' ? 2 : 0)), dmg);
     dmg -= absorbed;
     const [hx, hy] = this.slot.hpAnchor();
     if (absorbed) this.ui.float(`Blocked ${absorbed}`, hx, hy - 22, '#9ab8ff', this.time, { size: 13 });
@@ -1676,6 +1727,11 @@ export class Game {
       P.hp -= dmg;
       this.slot.state.hp = P.hp;
       this.ui.float(`-${dmg}`, hx, hy, '#ff4a4a', this.time, { size: 22 });
+      if (e.adapt === 'coin' && P.gold > 0) {                     // Pickpocket
+        const g = Math.min(3, P.gold);
+        P.gold -= g; this.slot.state.gold = P.gold;
+        this.ui.float(`-${g} gold`, ...this.slot.goldAnchor(), '#ffd24a', this.time, { size: 14 });
+      }
       this.audio.play('hurt');
       this.hurtFlash = this.time;
       this.slot.shake = 1;
@@ -1722,7 +1778,7 @@ export class Game {
     const C = this.combat, e = C.e, P = this.player;
     this.audio.voice(e.kind, 'attack');
     if (dmg <= 0) return;
-    const absorbed = Math.min(P.armor, dmg);
+    const absorbed = Math.min(Math.max(0, P.armor - (e.adapt === 'shield' ? 2 : 0)), dmg);
     P.armor -= absorbed;
     dmg -= absorbed;
     const [hx, hy] = this.slot.hpAnchor();
@@ -2400,7 +2456,8 @@ export class Game {
       if (e.burn) { U.icon(this.a.icons48.fire, x - bw / 2 - 17, y - 1, 14); U.text(`${e.burn}`, x - bw / 2 - 20, y + 10, { size: 10, align: 'right', color: '#ff8a3a' }); }
       if (e.chill) { U.icon(this.a.icons48.frost, x + bw / 2 + 3, y - 1, 14); U.text(`${e.chill}`, x + bw / 2 + 19, y + 10, { size: 10, color: '#a8e8ff' }); }
       if (e.stunTurns > 0 || (this.combat.stun)) U.text('STUNNED', x, y - 22, { size: 9, align: 'center', color: '#ffe070' });
-      U.text(`${Math.max(0, e.hp)}/${e.maxHp}`, x, y + 8, { size: 9, align: 'center', color: '#e8d8d0' });
+      U.text(`${Math.max(0, e.hp)}/${e.maxHp}${e.shell ? `  ward ${e.shell}` : ''}`, x, y + 8, { size: 9, align: 'center', color: '#e8d8d0' });
+      if (e.adapt) U.text(ADAPT[e.adapt].name, x, y + 18, { size: 8, align: 'center', color: ADAPT[e.adapt].col });
       if (this.combat.phase === 'ready') {
         const r = this.slot.spinRect();
         const pulse = 0.5 + 0.5 * Math.sin(now * 5);
@@ -2450,6 +2507,7 @@ export class Game {
     if (e.poison) { U.icon(this.a.icons48.dagger, x - 38, y - 5, 16); U.text(`${e.poison}`, x - 6, y + 8, { size: 10, align: 'right', color: '#8aff6a' }); }
     if (e.burn) { U.icon(this.a.icons48.fire, x - 60, y - 5, 16); U.text(`${e.burn}`, x - 42, y + 8, { size: 10, color: '#ff8a3a' }); }
     if (C.warn && C.phase === 'ready') U.text(`Next: ${ABILITY[C.warn].name}`, W / 2, y + 28, { size: 10, align: 'center', color: ABILITY[C.warn].col });
+    if (e.adapt) U.text(`Adapted: ${ADAPT[e.adapt].name}`, x + bw, y + 17, { size: 8, align: 'right', color: ADAPT[e.adapt].col });
     const P = this.player;
     if (P.burnT || P.spores) U.text(`${P.burnT ? `Burning ${P.burnT}  ` : ''}${P.spores ? `Spores ${P.spores}` : ''}`, W / 2, y + 39, { size: 9, align: 'center', color: '#ffb080' });
   }
