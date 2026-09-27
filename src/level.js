@@ -3,9 +3,9 @@
 //
 // Grid: cell (x, y) is centred at world (x*CELL, 0, y*CELL); y grows toward +Z.
 // Directions: 0 = north (-Z), 1 = east (+X), 2 = south (+Z), 3 = west (-X).
-import { rng, trs } from './math.js?v=20260926224059';
-import { Batcher } from './gl.js?v=20260926224059';
-import { BIOMES, ELITES, BOSSES, ROOMS, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926224059';
+import { rng, trs } from './math.js?v=20260926224846';
+import { Batcher } from './gl.js?v=20260926224846';
+import { BIOMES, ELITES, BOSSES, ROOMS, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926224846';
 
 export const CELL = 2.0;
 export const WALL_H = 2.6;
@@ -146,28 +146,9 @@ export function generate(floor, seed, opts = {}) {
     }
   }
 
-  // chests live in dead ends
-  const deadEnds = deadEndsAll.filter(([x, y]) => !occupied.has(key(x, y)) && dist[y * W + x] >= 3);
-  const nChests = Math.min(deadEnds.length, 1 + (R.chance(0.6) ? 1 : 0) + (floor >= 4 && R.chance(0.4) ? 1 : 0) + (biome === 'vault' ? 1 : 0));
-  for (let i = 0; i < nChests; i++) {
-    const [x, y] = deadEnds.splice(Math.floor(R() * deadEnds.length), 1)[0];
-    occupied.add(key(x, y));
-    entities.push({ type: 'chest', x, y, face: faceOpen(x, y), mimic: floor > 1 && R.chance(0.25 * (opts.mimics || 1) * (biome === 'vault' ? 1.6 : 1)) });
-  }
-  // enemies block corridors
-  const nEnemies = Math.min(3 + lvl + act, 9) + (opts.extraFoes || 0);
-  const cand = cells.filter(([x, y]) => dist[y * W + x] >= 3 && exits(x, y).length === 2);
-  let placed = 0;
-  for (let t = 0; t < 400 && placed < nEnemies && cand.length; t++) {
-    const [x, y] = R.pick(cand);
-    if (occupied.has(key(x, y))) continue;
-    if (entities.some(e => e.type === 'enemy' && Math.abs(e.x - x) + Math.abs(e.y - y) < 4)) continue;
-    occupied.add(key(x, y));
-    entities.push({ type: 'enemy', kind: R.pick(B.enemies), x, y, elite: false });
-    placed++;
-  }
-  // a cracked wall (only when you carry a bomb, or the Demolition Charge): at the end of a free dead end, the
-  // solid cell straight ahead hides a rune circle - blow the wall and it leads to a secret room
+  // a cracked wall (most floors; always if you carry a Bomb or the Demolition Charge): at the end of a free dead
+  // end, the solid cell straight ahead hides a rune circle - blow the wall and it leads to a secret room. Placed
+  // before the chests so it gets first pick of the dead ends.
   // a one-cell spur dug off a corridor (every neighbour but the corridor solid); alcove: the cell beyond it too
   const digSpur = (alcove) => {
     const found = [];
@@ -190,20 +171,45 @@ export function generate(floor, seed, opts = {}) {
     return c;
   };
   let secret = null;
-  if (opts.secret) {
-    const cand = deadEndsAll.filter(([x, y]) => !occupied.has(key(x, y)) && !(x === start.x && y === start.y) &&
-                                                !(x === stairs.x && y === stairs.y))
-      .map(([x, y]) => { const d = (exits(x, y)[0] + 2) % 4; return { x, y, d, ax: x + DX[d], ay: y + DY[d] }; })
-      .filter(s => s.ax > 0 && s.ay > 0 && s.ax < W - 1 && s.ay < H - 1 && !at(s.ax, s.ay));
-    if (!cand.length) {             // no free dead end: dig a spur off a corridor and crack its end wall
-      const c = digSpur(true);
-      if (c) cand.push(c);
+  if (opts.secret && R() < opts.secret) {
+    // a stretch of plain corridor, away from the start, with solid rock beside it: the crack goes on that wall
+    // and the niche behind it (which stays solid in the grid - you never walk into it) holds the rune circle
+    const inside = (u, v) => u >= 1 && v >= 1 && u <= W - 2 && v <= H - 2;
+    const cand = [];
+    for (const [x, y] of cells) {
+      if (occupied.has(key(x, y)) || dist[y * W + x] < 3 || exits(x, y).length !== 2) continue;
+      if ((x === start.x && y === start.y) || (x === stairs.x && y === stairs.y)) continue;
+      for (let d = 0; d < 4; d++) {
+        const ax = x + DX[d], ay = y + DY[d];
+        if (inside(ax, ay) && !at(ax, ay)) cand.push({ x, y, d, ax, ay });
+      }
     }
     if (cand.length) {
       secret = R.pick(cand);
       secret.kind = R.pick(['vault', 'shop', 'shrine']);
       occupied.add(key(secret.x, secret.y));
     }
+  }
+
+  // chests live in dead ends
+  const deadEnds = deadEndsAll.filter(([x, y]) => !occupied.has(key(x, y)) && dist[y * W + x] >= 3);
+  const nChests = Math.min(deadEnds.length, 1 + (R.chance(0.6) ? 1 : 0) + (floor >= 4 && R.chance(0.4) ? 1 : 0) + (biome === 'vault' ? 1 : 0));
+  for (let i = 0; i < nChests; i++) {
+    const [x, y] = deadEnds.splice(Math.floor(R() * deadEnds.length), 1)[0];
+    occupied.add(key(x, y));
+    entities.push({ type: 'chest', x, y, face: faceOpen(x, y), mimic: floor > 1 && R.chance(0.25 * (opts.mimics || 1) * (biome === 'vault' ? 1.6 : 1)) });
+  }
+  // enemies block corridors
+  const nEnemies = Math.min(3 + lvl + act, 9) + (opts.extraFoes || 0);
+  const cand = cells.filter(([x, y]) => dist[y * W + x] >= 3 && exits(x, y).length === 2);
+  let placed = 0;
+  for (let t = 0; t < 400 && placed < nEnemies && cand.length; t++) {
+    const [x, y] = R.pick(cand);
+    if (occupied.has(key(x, y))) continue;
+    if (entities.some(e => e.type === 'enemy' && Math.abs(e.x - x) + Math.abs(e.y - y) < 4)) continue;
+    occupied.add(key(x, y));
+    entities.push({ type: 'enemy', kind: R.pick(B.enemies), x, y, elite: false });
+    placed++;
   }
   // the special room: a set-piece in a free dead end (or a dug spur)
   if (opts.room) {

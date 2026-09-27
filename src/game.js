@@ -1,19 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926224059';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926224059';
+import { gl } from './gl.js?v=20260926224846';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926224846';
 const BOSS_SCALE = 2.1;
-import { Renderer, invert } from './render.js?v=20260926224059';
-import { SlotMachine } from './slot.js?v=20260926224059';
-import { CardView } from './cards.js?v=20260926224059';
-import { UI, SERIF } from './ui.js?v=20260926224059';
-import { Animator } from './anim.js?v=20260926224059';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926224059';
-import { is } from './input.js?v=20260926224059';
-import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926224059';
+import { Renderer, invert } from './render.js?v=20260926224846';
+import { SlotMachine } from './slot.js?v=20260926224846';
+import { CardView } from './cards.js?v=20260926224846';
+import { UI, SERIF } from './ui.js?v=20260926224846';
+import { Animator } from './anim.js?v=20260926224846';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926224846';
+import { is } from './input.js?v=20260926224846';
+import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926224846';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, ROOMS, ADAPT, AFFIXES, HEAT, ACHIEVEMENTS, UPDATE, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
          BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926224059';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926224846';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -346,7 +346,8 @@ export class Game {
     const P = this.player;
     this.level = generate(floor, seed, { biome: biomeKey, mimics: om === 'hoard' ? 2 : 1, extraFoes: om === 'swarm' ? 2 : 0,
                                          bossReady: this.bossReady(biomeKey),
-                                         secret: !title && P && (P.bag.includes('bomb') || P.relics.has('demolition')),
+                                         // most floors hide a cracked wall (always, if you carry a Bomb or the Charge)
+                                         secret: title || !P ? 0 : (P.bag.includes('bomb') || P.relics.has('demolition')) ? 1 : 0.6,
                                          room: !title });
     for (const e of this.level.entities)                   // a room whose set-piece hasn't shipped falls back to the fountain
       if (e.type === 'room' && !this.a.models[ROOMS[e.kind].model]) e.kind = 'fountain';
@@ -440,16 +441,24 @@ export class Game {
   waysideAt(x, y) { return this.entities.find(e => e.wayside && e.x === x && e.y === y); }
 
   reveal() {
-    const L = this.level;
+    const L = this.level, S = L.secret;
     const mark = (x, y) => this.explored.add(`${x},${y}`);
     mark(this.px, this.py);
+    let crack = S && !S.open && this.px === S.x && this.py === S.y;
     for (let d = 0; d < 4; d++) {
       let x = this.px, y = this.py;
       for (let k = 0; k < 6; k++) {
         x += DX[d]; y += DY[d];
         mark(x, y);
+        if (S && !S.open && x === S.x && y === S.y) crack = true;
         if (!L.at(x, y)) break;
       }
+    }
+    if (crack && !S.seen && this.player && this.state !== 'title') {    // the first glimpse of a cracked wall
+      S.seen = true;
+      const bomb = this.canBlast();
+      this.later(0.3, () => this.ui.toast(bomb ? 'You spot a cracked wall down that passage - a Bomb could bring it down'
+        : 'You spot a cracked wall down that passage... if only you had a Bomb', this.time, '#c890ff', 3.2));
     }
   }
 
@@ -645,6 +654,8 @@ export class Game {
       else if (e && e.type === 'room' && !e.used) what = ROOMS[e.kind].name;
       else if (e && e.type === 'teleporter') what = 'Rune circle';
       else if (this.px + DX[d] === this.level.stairs.x && this.py + DY[d] === this.level.stairs.y) what = 'Stairs';
+      else if (this.level.secret && this.level.secret.seen && !this.level.secret.open &&
+               this.px + DX[d] === this.level.secret.x && this.py + DY[d] === this.level.secret.y) what = 'Cracked wall';
       out.push({ d, rel, what });
     }
     return out;
@@ -658,6 +669,16 @@ export class Game {
   }
 
   autoStep() {
+    const S = this.level.secret;
+    if (S && this.px === S.x && this.py === S.y && !S.handled) {
+      const tele = S.open && this.entities.find(e => e.type === 'teleporter' && e.x === S.ax && e.y === S.ay && !e.gone);
+      const nag = !S.open && !(S.snooze && !this.canBlast());
+      if (tele || nag) {
+        if (this.dir !== S.d) { if (this.resumeDir === undefined) this.resumeDir = this.dir; this.dir = S.d; this.startTurn(0.25); return; }
+        this.ask(tele ? 'teleport' : 'crack', tele || null);
+        return;
+      }
+    }
     const far = this.entityAt(this.px + 2 * DX[this.dir], this.py + 2 * DY[this.dir]);
     if (far && far.boss && far.alive) { this.startCombat(far); return; }
     const ahead = this.entityAt(this.px + DX[this.dir], this.py + DY[this.dir]);
@@ -672,8 +693,6 @@ export class Game {
     }
     const back = (this.dir + 2) % 4;
     const opts = this.choices().filter(c => c.d !== back);
-    const S = this.level.secret;
-    if (opts.length === 0 && S && !S.open && this.px === S.x && this.py === S.y && this.dir === S.d) { this.ask('crack'); return; }
     if (opts.length === 0) { this.ask('deadend'); return; }
     if (opts.length === 1 && !opts[0].what && !this.entityAt(this.px + DX[opts[0].d], this.py + DY[opts[0].d])) {
       const d = opts[0].d;
@@ -693,6 +712,8 @@ export class Game {
   }
 
   step(d) {
+    const S = this.level.secret;
+    if (S && this.px === S.x && this.py === S.y) S.handled = false;
     this.px += DX[d]; this.py += DY[d];
     this.move = { t: 0, dur: 0.26, kind: 'step' };
     this.audio.play('step');
@@ -708,10 +729,23 @@ export class Game {
       return;
     }
     if (P.kind === 'crack' && rel === 'use') {
-      if (!this.canBlast()) { this.audio.play('deny'); this.ui.toast('You need a Bomb to blow it open', this.time, '#ff8a6a'); return; }
+      if (!this.canBlast()) { this.audio.play('deny'); this.ui.toast('You need a Bomb to blow it open - merchants sell them', this.time, '#ff8a6a'); return; }
       this.prompt = null; this.blastWall(); return;
     }
     if (P.kind === 'teleport' && rel === 'use') { this.prompt = null; this.warp(P.ent); return; }
+    if ((P.kind === 'crack' || P.kind === 'teleport') && rel === 'back' && this.level.secret) {
+      const S = this.level.secret;
+      this.prompt = null;
+      S.handled = true;
+      if (P.kind === 'crack') S.snooze = !this.canBlast();     // no Bomb: don't stop you here again until you have one
+      const ex = this.level.exits(this.px, this.py);
+      const d = this.resumeDir !== undefined && ex.includes(this.resumeDir) ? this.resumeDir : ex[0];
+      this.resumeDir = undefined;
+      this.audio.play('click');
+      if (d !== undefined && d !== this.dir) { this.dir = d; this.startTurn(0.25); }
+      this.autoAt = this.time + 0.3;
+      return;
+    }
     if (P.kind === 'room' && rel === 'use') { this.useRoom(P.ent); return; }
     if (P.kind === 'chest' || P.kind === 'merchant' || P.kind === 'altar' || P.kind === 'crack' || P.kind === 'teleport' || P.kind === 'room') {
       if (rel === 'use') { this.prompt = null; this.interact(P.ent); return; }
@@ -942,7 +976,7 @@ export class Game {
     if (!free) P.bag.splice(P.bag.indexOf('bomb'), 1);
     if (++P.blasts >= 3) this.achieve('demolitionist');
     S.open = true;
-    L.grid[S.ay * L.W + S.ax] = 1;
+    S.handled = false;
     this.lights = this.lights.filter(l => !l.secretWall);
     this.lights.push({ pos: [S.ax * CELL, 0.9, S.ay * CELL], col: [0.75, 0.45, 1.15], radius: 3.4, flicker: 0 });
     this.entities.push(this.spawn({ type: 'teleporter', x: S.ax, y: S.ay }));
@@ -988,7 +1022,9 @@ export class Game {
     Object.assign(this, { level: s.level, biome: s.biome, static: s.stat, lights: s.lights, crack: s.crack, alcove: s.alcove,
                           spinners: s.spinners, entities: s.entities, explored: s.explored });
     s.tele.gone = true;                                          // the circle burns out behind you
-    this.enterCell(s.px, s.py, (this.level.secret.d + 2) % 4);
+    const S = this.level.secret, ex = this.level.exits(s.px, s.py);
+    this.enterCell(s.px, s.py, ex.length ? ex[0] : (S.d + 2) % 4);
+    S.handled = true;
     this.audio.ambience(this.level.biome);
     this.ui.toast('The rune circle flickers out behind you', this.time, '#c890ff', 2.4);
   }
@@ -2227,6 +2263,8 @@ export class Game {
       ((P.heat || 0) >= 5 ? 1.2 : 1);
     if (!m.stock) {
       let ids = this.rollCards(P.relics.has('thieves_glove') ? 4 : 3, 0.4);
+      const S = this.level.secret;                   // a sealed wall on this floor and nothing to open it with: sell a Bomb
+      if (S && !S.open && !m.secret && !this.canBlast() && !ids.includes('bomb')) ids[ids.length - 1] = 'bomb';
       if (m.secret) {                                // the secret dealer: two unique relics and two rare-or-better cards
         const rel = Object.keys(CARDS).filter(id => CARDS[id].secret && !this.player.relics.has(CARDS[id].relic));
         for (let i = rel.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rel[i], rel[j]] = [rel[j], rel[i]]; }
@@ -2759,17 +2797,17 @@ export class Game {
     }
     if (P.kind === 'crack' || P.kind === 'teleport' || P.kind === 'altar') {
       const back = P.kind === 'teleport' && P.ent.back;
-      const t = P.kind === 'crack' ? 'The wall here is cracked...' : P.kind === 'altar' ? 'An altar holds treasures no one else will find.'
+      const t = P.kind === 'crack' ? 'This wall is cracked... something hums behind it.' : P.kind === 'altar' ? 'An altar holds treasures no one else will find.'
         : back ? 'The rune circle hums - the way back.' : 'A rune circle glows in the rubble.';
       U.text(t, W / 2, top * 0.2, { size: 14, align: 'center', color: '#d8b8ff', alpha: pop });
       const can = P.kind !== 'crack' || this.canBlast();
       if (P.kind === 'crack' && !this.player.relics.has('demolition'))
-        U.text(can ? 'Blowing it open costs 1 Bomb from your reels' : 'You need a Bomb to blow it open', W / 2, top * 0.2 + 14,
+        U.text(can ? 'Blowing it open costs 1 Bomb from your reels' : 'You need a Bomb to blow it open (merchants sell them)', W / 2, top * 0.2 + 14,
           { size: 10, align: 'center', color: can ? '#ffb060' : '#ff8a6a', alpha: pop, bold: false });
       const bw = 150, by = top - 34;
       const label = P.kind === 'crack' ? 'Blow it open  [W]' : P.kind === 'altar' ? 'Approach  [W]' : back ? 'Return  [W]' : 'Step in  [W]';
       U.button('go:use', label, W / 2 - bw - 6, by, bw, 22, ptr, { size: 12, fill: can ? '#4a1c6a' : '#3a3440', hotFill: can ? '#6a2a8e' : '#3a3440' });
-      U.button('go:back', 'Turn back  [S]', W / 2 + 6, by, bw, 22, ptr, { size: 12 });
+      U.button('go:back', P.kind === 'altar' ? 'Turn back  [S]' : 'Keep going  [S]', W / 2 + 6, by, bw, 22, ptr, { size: 12 });
       return;
     }
     if (P.kind === 'chest' || P.kind === 'merchant' || P.kind === 'wayside') {
@@ -3096,7 +3134,7 @@ export class Game {
       g.fillRect(x0 + e.x * cs + 1, y0 + e.y * cs + 1, cs - 2, cs - 2);
     }
     const S = L.secret;
-    if (S && !S.open && this.player.relics.has('eye_of_depths')) { g.fillStyle = '#c890ff'; g.fillRect(x0 + S.ax * cs, y0 + S.ay * cs, cs, cs); }
+    if (S && !S.open && (S.seen || this.player.relics.has('eye_of_depths'))) { g.fillStyle = '#c890ff'; g.fillRect(x0 + S.ax * cs, y0 + S.ay * cs, cs, cs); }
     g.fillStyle = '#ffffff';
     g.fillRect(x0 + this.px * cs + 1, y0 + this.py * cs + 1, cs - 2, cs - 2);
     g.fillStyle = '#ffd24a';
