@@ -1,19 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926072615';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926072615';
+import { gl } from './gl.js?v=20260926224059';
+import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926224059';
 const BOSS_SCALE = 2.1;
-import { Renderer, invert } from './render.js?v=20260926072615';
-import { SlotMachine } from './slot.js?v=20260926072615';
-import { CardView } from './cards.js?v=20260926072615';
-import { UI, SERIF } from './ui.js?v=20260926072615';
-import { Animator } from './anim.js?v=20260926072615';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926072615';
-import { is } from './input.js?v=20260926072615';
-import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926072615';
+import { Renderer, invert } from './render.js?v=20260926224059';
+import { SlotMachine } from './slot.js?v=20260926224059';
+import { CardView } from './cards.js?v=20260926224059';
+import { UI, SERIF } from './ui.js?v=20260926224059';
+import { Animator } from './anim.js?v=20260926224059';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926224059';
+import { is } from './input.js?v=20260926224059';
+import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926224059';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, ROOMS, ADAPT, AFFIXES, HEAT, ACHIEVEMENTS, UPDATE, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
          BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926072615';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926224059';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -435,6 +435,8 @@ export class Game {
 
   // things that block a corridor (a wayside merchant stands aside and lets you pass)
   entityAt(x, y) { return this.entities.find(e => e.x === x && e.y === y && e.alive !== false && !e.gone && !e.wayside); }
+  // a set-piece that's been used up (opened chest or altar, spent special room) stays put and walls off its cell
+  spent(e) { return !!e && ((e.type === 'chest' && e.opened) || (e.type === 'altar' && e.opened) || (e.type === 'room' && e.used)); }
   waysideAt(x, y) { return this.entities.find(e => e.wayside && e.x === x && e.y === y); }
 
   reveal() {
@@ -634,6 +636,7 @@ export class Game {
     for (const d of this.exitsHere()) {
       const rel = ['forward', 'right', 'back', 'left'][(d - this.dir + 4) % 4];
       const e = this.entityAt(this.px + DX[d], this.py + DY[d]);
+      if (this.spent(e)) continue;                            // nothing left there: no way through
       let what = '';
       if (e && e.type === 'enemy') what = e.def.name;
       else if (e && e.type === 'chest' && !e.opened) what = 'Chest';
@@ -668,15 +671,11 @@ export class Game {
       if (ahead.type === 'teleporter') { this.ask('teleport', ahead); return; }
     }
     const back = (this.dir + 2) % 4;
-    const opts = this.choices().filter(c => {
-      if (c.d === back) return false;
-      const e = this.entityAt(this.px + DX[c.d], this.py + DY[c.d]);
-      return !(e && ((e.type === 'chest' && e.opened) || (e.type === 'room' && e.used)));
-    });
+    const opts = this.choices().filter(c => c.d !== back);
     const S = this.level.secret;
     if (opts.length === 0 && S && !S.open && this.px === S.x && this.py === S.y && this.dir === S.d) { this.ask('crack'); return; }
     if (opts.length === 0) { this.ask('deadend'); return; }
-    if (opts.length === 1 && !opts[0].what) {
+    if (opts.length === 1 && !opts[0].what && !this.entityAt(this.px + DX[opts[0].d], this.py + DY[opts[0].d])) {
       const d = opts[0].d;
       if (d !== this.dir) { this.dir = d; this.startTurn(0.2); this.pendingStep = d; return; }   // bend: follow it
       this.step(d);
