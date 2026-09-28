@@ -8,6 +8,7 @@ export const RARITY = {
   epic:      { label: 'EPIC',      color: '#a64ce0', w: 5 },
   legendary: { label: 'LEGENDARY', color: '#e03636', w: 1.2 },
   secret:    { label: 'SECRET',    color: '#b070ff', w: 1 },        // only behind cracked walls, never in the normal pools
+  mythic:    { label: 'MYTHIC',    color: '#3ee8d8', w: 0 },        // sold only by the dealers of the Starlit Sanctum
 };
 
 // Reel symbols. Effects are resolved in game.js.
@@ -96,6 +97,12 @@ export const SYMBOLS = {
   blizzard:     { name: 'Blizzard',         icon: 'blizzard',     rarity: 'epic',      dmg: 3, chill: 3, freeze: 0.3, spell: 1, sure: 1, desc: 'Deal 3 damage and chill for 3 turns. 30% chance to freeze.' },
   arcane_ward:  { name: 'Arcane Ward',      icon: 'arcane_ward',  rarity: 'uncommon',  armor: 3, ward: 1, spell: 1, sure: 1, desc: 'Gain 3 Armor, +1 for every other Spell on the reels.' },
   thunderstorm: { name: 'Thunderstorm',     icon: 'thunderstorm', rarity: 'epic',      dmg: 3, hits: 3, stun: 0.25, spell: 1, sure: 1, desc: 'Three lightning strikes of 3 damage. 25% chance to stun.' },
+  // mythic: the wares of the Starlit Sanctum's dealers
+  starblade:    { name: 'Starforged Blade', icon: 'starblade',    rarity: 'mythic',    dmg: 5, hits: 2, pierce: 1, desc: 'Deal 5 damage twice, cleaving through armour.' },
+  supernova:    { name: 'Supernova',        icon: 'supernova',    rarity: 'mythic',    dmg: 12, pierce: 1, burn: 3, spell: 1, sure: 1, desc: 'Deal 12 damage through block and set the foe ablaze.' },
+  dragon_hoard: { name: "Dragon's Hoard",   icon: 'dragon_hoard', rarity: 'mythic',    gold: 8, magnet: 1,     desc: 'Gain 8 gold, +1 for every Coin on the reels.' },
+  elixir:       { name: 'Elixir of Ages',   icon: 'elixir',       rarity: 'mythic',    heal: 6, vigor: 1,      desc: 'Restore 6 HP and +1 Max HP for the rest of the run.' },
+  aegis:        { name: 'Celestial Aegis',  icon: 'aegis',        rarity: 'mythic',    armor: 6, thorns: 3,    desc: 'Gain 6 Armor. Thorns 3 this fight: the foe takes 3 whenever it strikes.' },
 };
 
 // Paytable families: upgraded symbols count as their base symbol.
@@ -115,6 +122,7 @@ export const FAMILY = {
   katana: 'blade', shuriken: 'blade', whip: 'blade', halberd: 'blade', bear_trap: 'blade', torch: 'blade',
   herb: 'potion', gemstone: 'coin', rune_stone: 'clover', war_banner: 'shield', tower_shield: 'shield',
   blizzard: 'spell', arcane_ward: 'spell', thunderstorm: 'spell',
+  starblade: 'blade', supernova: 'spell', dragon_hoard: 'coin', elixir: 'potion', aegis: 'shield',
 };
 export const FAMILY_NAME = { blade: 'Weapons', shield: 'Shields', potion: 'Potions', coin: 'Coins', chest: 'Treasure',
   clover: 'Clovers', skull: 'Curses', bomb: 'Bombs', dice: 'Dice', wild: 'Wildcards', spell: 'Spells' };
@@ -281,6 +289,22 @@ export const CARDS = {
                       desc: 'After every fight, heal 1 HP for every 10 gold you carry (up to 6).' },
   eye_of_depths:    { name: 'Eye of the Depths', rarity: 'secret',   type: 'passive', relic: 'eye_of_depths', secret: true,
                       desc: 'Every floor is mapped the moment you arrive - cracked walls included.' },
+  // mythic wares (mythic: only the Starlit Sanctum's dealers sell them - price: their asking price in gold)
+  starblade:        { name: 'Starforged Blade', rarity: 'mythic',    type: 'add',     sym: 'starblade', mythic: true, price: 125 },
+  supernova:        { name: 'Supernova',        rarity: 'mythic',    type: 'add',     sym: 'supernova', mythic: true, price: 125, cls: 'mage' },
+  dragon_hoard:     { name: "Dragon's Hoard",   rarity: 'mythic',    type: 'add',     sym: 'dragon_hoard', mythic: true, price: 110 },
+  elixir_of_ages:   { name: 'Elixir of Ages',   rarity: 'mythic',    type: 'add',     sym: 'elixir', mythic: true, price: 115 },
+  celestial_aegis:  { name: 'Celestial Aegis',  rarity: 'mythic',    type: 'add',     sym: 'aegis', mythic: true, price: 110 },
+  crown_of_stars:   { name: 'Crown of Stars',   rarity: 'mythic',    type: 'passive', relic: 'crown_of_stars', mythic: true, price: 160,
+                      desc: 'The heavens favour you: +2 Might, +2 Guard and +25% Luck.' },
+  sovereign_ring:   { name: "Sovereign's Ring", rarity: 'mythic',    type: 'passive', relic: 'sovereign_ring', mythic: true, price: 150,
+                      desc: 'Every symbol has a 20% chance to trigger twice.' },
+  star_heart:       { name: 'Heart of a Star',  rarity: 'mythic',    type: 'boost',   stat: 'star_heart', mythic: true, price: 105,
+                      desc: '+12 Max HP and heal fully. It burns in your chest like a small sun.' },
+  chronos_dial:     { name: 'Chronos Dial',     rarity: 'mythic',    type: 'passive', relic: 'chronos_dial', mythic: true, price: 140,
+                      desc: 'Every 3rd spin of a fight is a free spin.' },
+  wishing_star:     { name: 'Wishing Star',     rarity: 'mythic',    type: 'passive', relic: 'wishing_star', mythic: true, price: 130,
+                      desc: 'The first blow of every fight is caught by a falling star: you take nothing, and the foe takes 8.' },
   // The Clockwork Deep: new reel symbols
   katana:           { name: 'Katana',           rarity: 'rare',      type: 'add',     sym: 'katana' },
   shuriken:         { name: 'Shuriken',         rarity: 'uncommon',  type: 'add',     sym: 'shuriken' },
@@ -343,7 +367,8 @@ export const CARD_ICON = { horseshoe: 'horseshoe', heartstone: 'heartstone', whe
   phoenix_egg: 'phoenix_egg', skeleton_key: 'skeleton_key', fools_gold: 'fools_gold', philosopher_stone: 'philosopher_stone',
   eye_of_depths: 'eye_of_depths', clockwork_heart: 'clockwork_heart', vampire_fang: 'vampire_fang', thieves_glove: 'thieves_glove',
   soul_jar: 'soul_jar', quicksilver: 'quicksilver', tidal_charm: 'tidal_charm', hex_ward: 'hex_ward', star_map: 'star_map',
-  iron_boots: 'iron_boots', blood_ruby: 'blood_ruby' };
+  iron_boots: 'iron_boots', blood_ruby: 'blood_ruby', crown_of_stars: 'crown_of_stars', sovereign_ring: 'sovereign_ring',
+  star_heart: 'star_heart', chronos_dial: 'chronos_dial', wishing_star: 'wishing_star' };
 
 // The special room of every floor: a set-piece in a dead end (its model, the colour of its light, the prompt)
 export const ROOMS = {
@@ -418,20 +443,18 @@ export const ACHIEVEMENTS = {
 
 // the update's own notes (the title screen shows them once, and on demand)
 export const UPDATE = {
-  id: 'clockwork_deep', name: 'THE CLOCKWORK DEEP',
+  id: 'starlit_sanctum', name: 'THE STARLIT SANCTUM',
   notes: [
-    'Two new biomes: the Sunken Library and the Clockwork Foundry - with their own foes, bosses, music and dressing.',
-    'New foes: Coglings, Ink Slimes, Page Wraiths and Steam Wraiths, each with a trick of its own.',
-    'Elites now carry dark gifts: Vampiric, Thorned, Armored, Frenzied, Regenerating, Hexing, Explosive, Swift.',
-    '14 new reel symbols - Katana, Shuriken, Whip, Halberd, Bear Trap, Torch, Healing Herb, Gemstone, Rune Stone, War Banner, Tower Shield, and the spells Blizzard, Arcane Ward and Thunderstorm.',
-    '10 new relics and 4 new Omens.',
-    'Three new special rooms: the Wishing Well, the Armory and the Cursed Idol.',
-    'Heat: win a run to unlock harder descents, five levels deep.',
-    '16 achievements to earn.',
+    'Every secret room is now the Starlit Sanctum: a terrace adrift in a starry void - rune-carved parapets, floating crystals, drifting isles and a great rune ring turning in the sky, with music of its own.',
+    'Two strange dealers keep its secret shops: Astrael, the Star-Veiled, and the Unblinking.',
+    "A new rarity, MYTHIC: ten wares sold only by those dealers, for 100 gold and up. They take no discounts - and no fool's gold.",
+    "Mythic arms: the Starforged Blade, Supernova (the Mage's), Dragon's Hoard, Elixir of Ages and the Celestial Aegis.",
+    "Mythic relics: the Crown of Stars, Sovereign's Ring, Heart of a Star, Chronos Dial and the Wishing Star.",
+    "The Magma Forge's walls are laid the right way up.",
   ],
 };
 
-export const CARD_PRICE = { common: 8, uncommon: 14, rare: 22, epic: 34, legendary: 50, secret: 40 };
+export const CARD_PRICE = { common: 8, uncommon: 14, rare: 22, epic: 34, legendary: 50, secret: 40, mythic: 110 };
 
 // The Knight's starting reel bag ("Balanced").
 export const KNIGHT_BAG = ['sword', 'sword', 'sword', 'sword', 'shield', 'shield', 'shield', 'potion', 'potion',
@@ -546,6 +569,12 @@ BIOMES.vault = {
   torch: [1.35, 1.0, 0.55], torchRadius: 5.5, lanternOnPlayer: [0.32, 0.28, 0.22],
 };
 
+// the Starlit Sanctum: every secret room, open to a night sky full of stars (never a floor of its own)
+BIOMES.sanctum = {
+  name: 'Starlit Sanctum', enemies: [], stars: true,
+  fog: [0.06, 0.035, 0.12], fogRange: [6.0, 30.0], ambient: [0.3, 0.26, 0.42],
+  torch: [0.95, 0.6, 1.6], torchRadius: 5.0, lanternOnPlayer: [0.32, 0.3, 0.42],
+};
 BIOMES.library = {
   name: 'Sunken Library', enemies: ['inkslime', 'inkslime', 'pagewraith', 'pagewraith', 'skeleton', 'cultist', 'wailer', 'murk'],
   fog: [0.02, 0.05, 0.06], fogRange: [3.0, 13.0], ambient: [0.17, 0.25, 0.27],

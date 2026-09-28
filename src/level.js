@@ -3,9 +3,9 @@
 //
 // Grid: cell (x, y) is centred at world (x*CELL, 0, y*CELL); y grows toward +Z.
 // Directions: 0 = north (-Z), 1 = east (+X), 2 = south (+Z), 3 = west (-X).
-import { rng, trs } from './math.js?v=20260926224846';
-import { Batcher } from './gl.js?v=20260926224846';
-import { BIOMES, ELITES, BOSSES, ROOMS, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926224846';
+import { rng, trs } from './math.js?v=20260926234503';
+import { Batcher } from './gl.js?v=20260926234503';
+import { BIOMES, ELITES, BOSSES, ROOMS, biomeForFloor, levelOf, isBossFloor } from './data.js?v=20260926234503';
 
 export const CELL = 2.0;
 export const WALL_H = 2.6;
@@ -225,26 +225,30 @@ export function generate(floor, seed, opts = {}) {
   return { floor, biome, W, H, grid: g, at, exits, start, stairs, entities, dist, occupied, seed, secret };
 }
 
-// A secret room behind a cracked wall: a short hall with the way back (a rune circle) behind you and the
-// treasure at its end - a vault of chests, a secret shop, or a shrine whose altar holds the unique relics.
+// A secret room behind a cracked wall: the Starlit Sanctum - a short passage from the rune circle you arrived
+// on into a three-wide chamber open to a starry void, the treasure at its far end: a vault of chests, a secret
+// shop kept by one of the Sanctum's strange dealers, or a shrine whose altar holds the unique relics. You walk
+// the chamber's centre aisle (nav); the vault's side chests are the only side steps.
 export function generateSecret(kind, floor, seed) {
-  const W = 7, H = 9, cx = 3;
-  const g = new Uint8Array(W * H);
+  const W = 9, H = 10, cx = 4;
+  const g = new Uint8Array(W * H), nav = new Uint8Array(W * H);
   const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : g[y * W + x];
-  for (let y = 1; y <= 7; y++) g[y * W + cx] = 1;
-  if (kind === 'vault') { g[3 * W + cx - 1] = 1; g[3 * W + cx + 1] = 1; }          // two side niches
-  const exits = (x, y) => [0, 1, 2, 3].filter(d => at(x + DX[d], y + DY[d]));
+  const navAt = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : nav[y * W + x];
+  for (let y = 1; y <= 5; y++) for (let x = cx - 1; x <= cx + 1; x++) g[y * W + x] = 1;    // the chamber
+  for (let y = 1; y <= 7; y++) { g[y * W + cx] = 1; nav[y * W + cx] = 1; }                  // aisle + passage
+  if (kind === 'vault') { nav[3 * W + cx - 1] = 1; nav[3 * W + cx + 1] = 1; }                 // the side chests
+  const exits = (x, y) => [0, 1, 2, 3].filter(d => navAt(x + DX[d], y + DY[d]));
   const dist = new Int32Array(W * H).fill(-1);
   for (let y = 1; y <= 7; y++) dist[y * W + cx] = 7 - y;
   const entities = [{ type: 'teleporter', x: cx, y: 7, back: true }];
   if (kind === 'vault') entities.push({ type: 'chest', x: cx - 1, y: 3, face: 1, secret: 'rare' },
                                       { type: 'chest', x: cx + 1, y: 3, face: 3, secret: 'rare' },
                                       { type: 'chest', x: cx, y: 1, face: 2, secret: 'relic' });
-  else if (kind === 'shop') entities.push({ type: 'merchant', x: cx, y: 1, secret: true });
+  else if (kind === 'shop') entities.push({ type: 'merchant', x: cx, y: 1, secret: true, npc: seed % 2 ? 'oracle' : 'veiled' });
   else entities.push({ type: 'altar', x: cx, y: 1 });
-  return { floor, biome: { vault: 'vault', shop: 'crypt', shrine: 'grotto' }[kind], W, H, grid: g, at, exits,
-           start: { x: cx, y: 6, dir: 0 }, stairs: { x: -9, y: -9 }, entities, dist,
-           occupied: new Set(entities.map(e => `${e.x},${e.y}`)), seed, secretRoom: kind };
+  return { floor, biome: 'sanctum', W, H, grid: g, at, exits, start: { x: cx, y: 6, dir: 0 }, stairs: { x: -9, y: -9 },
+           entities, dist, occupied: new Set(entities.map(e => `${e.x},${e.y}`)), seed, secretRoom: kind,
+           sanctum: { x0: cx - 1, x1: cx + 1, y0: 1, y1: 5, cx } };
 }
 
 // The boss hall: a corridor opening into a long pillared hall, the boss waiting at its far end with the
@@ -313,9 +317,12 @@ export function build(level, models) {
                floors: ['library_floor0', 'library_floor0', 'library_floor1'], ceil: 'library_ceil' },
     foundry: { walls: ['foundry_wall0', 'foundry_wall0', 'foundry_wall1', 'foundry_wall2'], floors: ['foundry_floor0', 'foundry_floor0', 'foundry_floor1'],
                ceil: 'foundry_ceil' },
+    sanctum: { walls: ['sanctum_wall0', 'sanctum_wall0', 'sanctum_wall1', 'sanctum_wall2'], floors: ['sanctum_floor0'],
+               rails: ['sanctum_rail0', 'sanctum_rail0', 'sanctum_rail0', 'sanctum_rail1'], pillar: 'sanctum_pillar' },
+               // no ceiling: a terrace open to the stars (parapets round the chamber, walls down the passage)
   };
   // a biome whose kit pieces haven't shipped borrows the dungeon's
-  const kitOk = K => K && [...K.walls, ...K.floors, ...(K.ceil ? [K.ceil] : []), ...(K.pillar ? [K.pillar] : [])].every(m => models[m]);
+  const kitOk = K => K && [...K.walls, ...K.floors, ...(K.rails || []), ...(K.ceil ? [K.ceil] : []), ...(K.pillar ? [K.pillar] : [])].every(m => models[m]);
   const KIT = kitOk(KITS[biome]) ? KITS[biome] : KITS.dungeon;
   const walls = KIT.walls, floors = KIT.floors;
   // corner props: the model's corner is its origin with the room toward model +x/+y
@@ -328,12 +335,13 @@ export function build(level, models) {
       const [cx, , cz] = cellPos(x, y);
       const open = at(x, y);
       if (open) {
-        if (!(x === level.stairs.x && y === level.stairs.y)) put(R.pick(floors), cx, 0, cz, R.int(0, 3) * Math.PI / 2);
+        const circle = level.sanctum && x === level.sanctum.cx && y === 3;        // a rune circle mid-chamber
+        if (!(x === level.stairs.x && y === level.stairs.y)) put(circle ? 'sanctum_floor1' : R.pick(floors), cx, 0, cz, R.int(0, 3) * Math.PI / 2);
         if (KIT.ceil) put(KIT.ceil, cx, 0, cz, KIT.spin ? R.int(0, 3) * Math.PI / 2 : 0);
         for (let d = 0; d < 4; d++) {
           if (at(x + DX[d], y + DY[d])) continue;
           const ex = cx + DX[d] * CELL / 2, ez = cz + DY[d] * CELL / 2;
-          put(R.pick(walls), ex, 0, ez, wallRot(d));
+          put(R.pick(KIT.rails && y <= level.sanctum.y1 ? KIT.rails : walls), ex, 0, ez, wallRot(d));
         }
       } else if (biome === 'ruins') {
         put(R.pick(floors), cx, -0.02, cz, R.int(0, 3) * Math.PI / 2);
@@ -356,7 +364,7 @@ export function build(level, models) {
       const n = a + b + c + d;
       const diag = (n === 2 && a === d);
       const px = i * CELL - CELL / 2, pz = j * CELL - CELL / 2;
-      if (KIT.pillar && (n === 3 || diag || (n === 1 && R.chance(0.35)))) put(KIT.pillar, px, 0, pz);
+      if (KIT.pillar && (n === 3 || diag || (n === 1 && (biome === 'sanctum' || R.chance(0.35))))) put(KIT.pillar, px, 0, pz);
       if (biome === 'ruins' && (n === 3 || diag || (n >= 1 && n <= 2 && R.chance(0.3))))
         put(R.chance(0.6) ? R.pick(['ruin_pillar0', 'ruin_pillar1']) : 'ruin_pillar_short0', px, 0, pz, R.int(0, 3) * Math.PI / 2);
     }
@@ -578,6 +586,30 @@ export function build(level, models) {
       }
     }
   }
+  // ---- the Starlit Sanctum: crystal obelisks down both sides of the chamber, the rune ring turning in the sky
+  // over it, isles of rock adrift around it (drawn and animated by the game: spinners / sky)
+  let sky = null;
+  if (level.sanctum) {
+    const { x0, x1, y0, y1, cx: mx } = level.sanctum;
+    const tints = [[0.8, 0.45, 1.5], [0.4, 0.9, 1.4]];
+    for (const y of [y0 + 1, y1 - 1]) {
+      for (const x of [x0, x1]) {
+        const [px, , pz] = cellPos(x, y);
+        const ox = (x === x0 ? -1 : 1) * 0.58;
+        spinners.push({ model: 'sanctum_obelisk', x: px + ox, z: pz, ry: 0, crystal: R() * 6 });
+        lights.push({ pos: [px + ox, 1.5, pz], col: tints[(x + y) % 2], radius: 4.2, flicker: 0 });
+      }
+    }
+    const [ccx, , ccz] = cellPos(mx, (y0 + y1) / 2);
+    // the ring stands up beyond the far end like a gate of runes; isles drift all round, above and below
+    sky = { ring: { x: ccx, y: 5.2, z: ccz - 20, tilt: 1.2, s: 1.35 }, isles: [] };
+    for (let k = 0; k < 9; k++) {
+      const a = (k / 9) * Math.PI * 2 + (R() - 0.5) * 0.4;
+      const r = 13 + R() * 10;
+      sky.isles.push({ model: k % 2 ? 'sanctum_isle1' : 'sanctum_isle0', x: ccx + Math.cos(a) * r, y: -4 + R() * 12,
+                       z: ccz + Math.sin(a) * r, ry: R() * 6, s: 0.8 + R() * 1.1, ph: R() * 6 });
+    }
+  }
   // ruins skyline
   if (biome === 'ruins') {
     for (let k = 0; k < 16; k++) {
@@ -600,5 +632,5 @@ export function build(level, models) {
       if (d !== (S.d + 2) % 4) alcoveBat.add(models[R.pick(walls)], trs(ax + DX[d] * CELL / 2, 0, az + DY[d] * CELL / 2, wallRot(d), 0, 0, 1));
     }
   }
-  return { batches: bat.build(), lights, crack: crackBat.build(), alcove: alcoveBat.build(), spinners };
+  return { batches: bat.build(), lights, crack: crackBat.build(), alcove: alcoveBat.build(), spinners, sky };
 }

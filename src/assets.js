@@ -1,7 +1,7 @@
 // assets.js - loads every model, texture, card, icon and UI image the game uses.
-import { parseSDM, Model } from './gl.js?v=20260926224846';
-import { parseSDA } from './anim.js?v=20260926224846';
-import { CARDS, SYMBOLS, CARD_ICON, OMENS, BOSSES, ENEMIES } from './data.js?v=20260926224846';
+import { parseSDM, Model } from './gl.js?v=20260926234503';
+import { parseSDA } from './anim.js?v=20260926234503';
+import { CARDS, SYMBOLS, CARD_ICON, OMENS, BOSSES, ENEMIES } from './data.js?v=20260926234503';
 
 export const BASE = (window.SD_ASSETS || '../assets/');
 // local dev: never trust the HTTP cache (assets are re-exported from Blender constantly)
@@ -18,6 +18,8 @@ export const MODELS = [
   'library_wall0', 'library_wall1', 'library_wall2', 'library_floor0', 'library_floor1', 'library_ceil', 'book_pile', 'candelabra', 'ink_puddle',
   'foundry_wall0', 'foundry_wall1', 'foundry_wall2', 'foundry_floor0', 'foundry_floor1', 'foundry_ceil', 'gear_stand', 'steam_vent', 'pipe_corner',
   'wishing_well', 'armory_rack', 'cursed_idol',
+  'sanctum_wall0', 'sanctum_wall1', 'sanctum_wall2', 'sanctum_floor0', 'sanctum_floor1', 'sanctum_rail0', 'sanctum_rail1',
+  'sanctum_pillar', 'sanctum_obelisk', 'sanctum_ring', 'sanctum_isle0', 'sanctum_isle1', 'npc_veiled', 'npc_oracle',
   'fountain', 'forge', 'blood_altar', 'gambler_table', 'lectern',
   'slot_machine', 'slot_machine_arcane', 'slot_machine_knight', 'slot_machine_forest', 'card', 'reel_pod',
   'dun_wall0', 'dun_wall1', 'dun_wall2', 'dun_wall3', 'dun_floor0', 'dun_floor1', 'dun_floor2', 'dun_ceil', 'dun_pillar',

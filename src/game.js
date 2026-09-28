@@ -1,19 +1,19 @@
 // game.js - Spin & Descend: a slot-machine roguelike. Spin. Fight. Loot.
 // Upgrade. Die. Spin again.
-import { gl } from './gl.js?v=20260926224846';
-import { perspective, lookAt, mul, trs, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926224846';
+import { gl } from './gl.js?v=20260926234503';
+import { perspective, lookAt, mul, trs, rotY, xform, clamp, lerp, angleLerp, easeOut, rng } from './math.js?v=20260926234503';
 const BOSS_SCALE = 2.1;
-import { Renderer, invert } from './render.js?v=20260926224846';
-import { SlotMachine } from './slot.js?v=20260926224846';
-import { CardView } from './cards.js?v=20260926224846';
-import { UI, SERIF } from './ui.js?v=20260926224846';
-import { Animator } from './anim.js?v=20260926224846';
-import { FX, RECIPES, EVENTS } from './fx.js?v=20260926224846';
-import { is } from './input.js?v=20260926224846';
-import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926224846';
+import { Renderer, invert } from './render.js?v=20260926234503';
+import { SlotMachine } from './slot.js?v=20260926234503';
+import { CardView } from './cards.js?v=20260926234503';
+import { UI, SERIF } from './ui.js?v=20260926234503';
+import { Animator } from './anim.js?v=20260926234503';
+import { FX, RECIPES, EVENTS } from './fx.js?v=20260926234503';
+import { is } from './input.js?v=20260926234503';
+import { generate, generateSecret, build, CELL, DX, DY } from './level.js?v=20260926234503';
 import { SYMBOLS, CARDS, RARITY, CARD_PRICE, ENEMIES, BIOMES, ROOMS, ADAPT, AFFIXES, HEAT, ACHIEVEMENTS, UPDATE, biomeForFloor, LAST_FLOOR, CLASSES, CLASS_ORDER, OMENS,
          BOSSES, ABILITY, makeRoute, levelOf, isBossFloor,
-         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926224846';
+         FAMILY, FAMILY_NAME, FAMILY_ICON, LINE_BONUS, SPECIAL_LINE, SCATTER_BONUS, CARD_ICON } from './data.js?v=20260926234503';
 
 // run progress kept in the browser: the deepest floor ever reached unlocks classes
 function loadProgress() {
@@ -51,7 +51,7 @@ export class Game {
     this.W = W; this.H = H;
     this.ui.resize(W, H, this.pipe.HUD);
     this.slot.layout(W, H);
-    if (this.state === 'shop') this.cards.layout(W, H, this.slot, [0.28, 0.86], 0.78);
+    if (this.state === 'shop') this.cards.layout(W, H, this.slot, [0.28, 0.86], this.shop.items.length > 3 ? 0.7 : 0.78);
     else this.cards.layout(W, H, this.slot);
     this.proj = perspective(FOV, W / H, 0.05, 90);
   }
@@ -109,7 +109,10 @@ export class Game {
       if (S) { if (q.get('secret')) S.kind = q.get('secret'); this.enterCell(S.x, S.y, S.d); this.reveal(); }
       if (q.has('blast')) this.later(0.3, () => { this.prompt = null; this.blastWall(); });
       if (q.has('enter')) this.later(2.0, () => { const t = this.entities.find(e => e.type === 'teleporter'); if (t) { this.prompt = null; this.warp(t); } });
+      if (q.get('npc')) this.forceNpc = q.get('npc');                          // &npc=veiled|oracle: who keeps the shop
+      if (q.has('trade')) this.later(4.2, () => { const m = this.entities.find(e => e.type === 'merchant'); if (m) { this.prompt = null; this.openShop(m); } });
     }
+    if (q.get('give')) for (const id of q.get('give').split(',')) if (CARDS[id]) this.applyCard(id);   // ?give=card,card
     if (q.has('combat')) {
       const e = this.entities.find(x => x.type === 'enemy' && (!q.get('combat') || x.kind === q.get('combat'))) ||
                 this.entities.find(x => x.type === 'enemy');
@@ -361,6 +364,7 @@ export class Game {
     this.crack = built.crack;
     this.alcove = built.alcove;
     this.spinners = built.spinners || [];
+    this.sky = built.sky || null;
     this.surface = null;
     this.entities = this.level.entities.map(e => this.spawn(e));
     for (const e of this.entities) if (e.type === 'enemy') this.omenFoe(e);
@@ -419,7 +423,7 @@ export class Game {
       return ent;
     }
     const ent = { ...e, open: 0, opened: false };
-    if (e.type === 'merchant' || (e.type === 'room' && e.kind === 'gambler')) ent.animator = this.makeAnimator('merchant');
+    if ((e.type === 'merchant' && !e.npc) || (e.type === 'room' && e.kind === 'gambler')) ent.animator = this.makeAnimator('merchant');
     if (e.type === 'chest' && this.player && this.player.relics.has('skeleton_key')) ent.mimic = false;
     return ent;
   }
@@ -497,7 +501,11 @@ export class Game {
     this.cardHover = this.cards.active ? this.cards.update(now, pointer) : -1;
     this.slot.state.spinHover = !!(pointer && this.inRect(pointer, this.slot.spinRect()));
 
-    const song = this.state === 'title' ? 'title' : this.state === 'shop' ? 'shop' : this.level.biome;
+    const song = this.state === 'title' ? 'title' : this.state === 'shop' ? (this.level.sanctum ? 'starshop' : 'shop') : this.level.biome;
+    if (this.level.sanctum && this.state !== 'title') {
+      this.moteAcc = (this.moteAcc || 0) + dt * 9;
+      for (; this.moteAcc >= 1; this.moteAcc--) this.sanctumMote(false);
+    }
     if (song !== this.songNow) { this.songNow = song; this.audio.song(song); }
     this.audio.intensity(this.combat ? 'combat' : 'explore');
     const wasBag = this.state === 'bag';
@@ -649,7 +657,7 @@ export class Game {
       let what = '';
       if (e && e.type === 'enemy') what = e.def.name;
       else if (e && e.type === 'chest' && !e.opened) what = 'Chest';
-      else if (e && e.type === 'merchant') what = 'Merchant';
+      else if (e && e.type === 'merchant') what = e.npc === 'oracle' ? 'The Unblinking' : e.npc === 'veiled' ? 'Astrael' : 'Merchant';
       else if (e && e.type === 'altar' && !e.opened) what = 'Altar';
       else if (e && e.type === 'room' && !e.used) what = ROOMS[e.kind].name;
       else if (e && e.type === 'teleporter') what = 'Rune circle';
@@ -999,28 +1007,52 @@ export class Game {
     const S = this.level.secret;
     this.achieve('secret_finder');
     this.surface = { level: this.level, biome: this.biome, stat: this.static, lights: this.lights, crack: this.crack,
-                     alcove: this.alcove, spinners: this.spinners, entities: this.entities, explored: this.explored, px: this.px, py: this.py, tele: t };
+                     alcove: this.alcove, spinners: this.spinners, sky: this.sky, entities: this.entities, explored: this.explored,
+                     px: this.px, py: this.py, tele: t };
     this.level = generateSecret(S.kind, this.floor, this.runSeed + this.floor * 131);
     this.biome = BIOMES[this.level.biome];
     const built = build(this.level, this.a.models);
     this.static = built.batches; this.lights = built.lights; this.crack = built.crack; this.alcove = built.alcove;
     this.spinners = built.spinners || [];
-    this.lights.push({ pos: [3 * CELL, 1.4, 1.3 * CELL], col: [1.3, 1.0, 0.6], radius: 5, flicker: 2 },      // the treasure
-                     { pos: [3 * CELL, 0.9, 7 * CELL], col: [0.75, 0.45, 1.15], radius: 3.6, flicker: 0 });  // the way back
+    this.sky = built.sky || null;
+    const cx = this.level.sanctum.cx * CELL, tint = { vault: [1.5, 1.1, 0.5], shop: [0.4, 0.75, 1.1], shrine: [1.4, 0.6, 1.2] }[S.kind];
+    this.lights.push({ pos: [cx, 2.2, 1.6 * CELL], col: tint, radius: 5.0, flicker: 2 },                  // the treasure
+                     { pos: [cx, 0.9, 7 * CELL], col: [0.75, 0.45, 1.15], radius: 3.6, flicker: 0 });     // the way back
+    if (this.forceNpc) for (const e of this.level.entities) if (e.type === 'merchant') e.npc = this.forceNpc;
     this.entities = this.level.entities.map(e => this.spawn(e));
     this.enterCell(this.level.start.x, this.level.start.y, this.level.start.dir);
     this.explored = new Set();
     this.reveal();
     this.audio.ambience(this.level.biome);
-    this.ui.toast({ vault: 'A hidden vault, heaped with the rarest spoils!', shop: 'A secret shop - its dealer trades in forbidden wares',
-                    shrine: 'A forgotten shrine - relics no one else will ever find' }[S.kind], this.time, '#c890ff', 3.2);
+    const npc = this.entities.find(e => e.type === 'merchant');
+    const sub = { vault: 'A hidden vault adrift among the stars, heaped with the rarest spoils',
+                  shop: npc && npc.npc === 'oracle' ? 'The Unblinking One watches over wares no merchant would dare sell'
+                    : 'Astrael, the Star-Veiled, keeps a shop at the edge of everything',
+                  shrine: 'A forgotten shrine - relics no one else will ever find' }[S.kind];
+    this.banner('THE STARLIT SANCTUM', sub, '#c890ff', 3.4);
+    this.audio.play('sanctum');
+    this.fx.flash('#b890ff', 0.5, 0.9);
+    for (let i = 0; i < 60; i++) this.sanctumMote(true);                        // the air is already full of them
+  }
+
+  // ---- the Starlit Sanctum: motes of light and rising runes drift through the air of the terrace
+  sanctumMote(anywhere) {
+    const Z = this.level.sanctum, R = Math.random;
+    const x = (Z.x0 - 0.6 + R() * (Z.x1 - Z.x0 + 1.2)) * CELL, z = (Z.y0 - 0.6 + R() * (Z.y1 - Z.y0 + 1.1)) * CELL;
+    const rune = R() < 0.14;
+    const col = rune ? (R() < 0.5 ? '#c890ff' : '#8ae0ff') : ['#c890ff', '#8ae0ff', '#ffe8a0', '#ffffff', '#ffa0d8'][Math.floor(R() * 5)];
+    this.fx.wpart(x, anywhere ? R() * 2.6 : R() * 0.4, z, {
+      vx: (R() - 0.5) * 0.12, vy: 0.12 + R() * 0.22, vz: (R() - 0.5) * 0.12, life: 4 + R() * 4, size: rune ? 0.05 : 0.012 + R() * 0.02,
+      shape: rune ? 'rune' : R() < 0.5 ? 'star' : 'glow', col, add: true, alpha: rune ? 0.8 : 0.9, glyph: Math.floor(R() * 1e6),
+      near: 1.6 });                                                              // never in your face (or over the reels)
   }
 
   leaveSecret() {
     const s = this.surface;
     this.surface = null;
+    this.fx.wparts = [];
     Object.assign(this, { level: s.level, biome: s.biome, static: s.stat, lights: s.lights, crack: s.crack, alcove: s.alcove,
-                          spinners: s.spinners, entities: s.entities, explored: s.explored });
+                          spinners: s.spinners, sky: s.sky, entities: s.entities, explored: s.explored });
     s.tele.gone = true;                                          // the circle burns out behind you
     const S = this.level.secret, ex = this.level.exits(s.px, s.py);
     this.enterCell(s.px, s.py, ex.length ? ex[0] : (S.d + 2) % 4);
@@ -1469,6 +1501,7 @@ export class Game {
     let times = 1;
     if (s.twice && Math.random() < s.twice) times++;
     if (C.charm && !s.charm && Math.random() < 0.25) times++;
+    if (this.player.relics.has('sovereign_ring') && Math.random() < 0.2) times++;
     if (C.blessed) times++;
     // Spellweaver: every 4th spell the Mage casts echoes
     if (this.player.relics.has('war_drum') && C.turn === 1) {                 // War Drum: the first spin doubles
@@ -1514,7 +1547,7 @@ export class Game {
 
   cardFx(i, id) {
     const r = CARDS[id].rarity;
-    const tier = r === 'secret' ? 4 : ['common', 'uncommon', 'rare', 'epic', 'legendary'].indexOf(r);
+    const tier = r === 'secret' || r === 'mythic' ? 4 : ['common', 'uncommon', 'rare', 'epic', 'legendary'].indexOf(r);
     const [fx, fy] = this.cards.screenFrac(i);
     EVENTS.card(this.fx, fx * this.W, fy * this.H, this.fxCtx(null), RARITY[r].color, Math.max(0, tier));
   }
@@ -1795,6 +1828,10 @@ export class Game {
       C.freeSpin = true;
       this.ui.toast('Sands of Time: the hourglass turns - a free spin!', this.time, '#f0c040');
     }
+    if (this.player.relics.has('chronos_dial') && C.turn % 3 === 0 && !C.freeSpin) {
+      C.freeSpin = true;
+      this.ui.toast('The Chronos Dial ticks back - a free spin!', this.time, '#6ae8d8');
+    }
     if (C.freeSpin) {
       C.freeSpin = false;
       C.phase = 'ready';
@@ -1901,6 +1938,13 @@ export class Game {
     if (P.relics.has('quicksilver') && !C.quick) {
       C.quick = true; slid = true; dmg = 0;
       this.ui.float('Quicksilver!', ...this.slot.hpAnchor(), '#e8f4ff', this.time, { size: 14 });
+    }
+    if (P.relics.has('wishing_star') && !C.wished && !slid) {         // a falling star takes the blow
+      C.wished = true; slid = true; dmg = 0;
+      this.ui.float('Wishing Star!', ...this.slot.hpAnchor(), '#6ae8d8', this.time, { size: 14 });
+      const [ex, ey] = this.enemyScreen(0.55);
+      this.fxEvent('starfallStrike', ex, ey);
+      this.later(0.35, () => { if (this.combat === C && e.alive) this.damageEnemy(8, true); });
     }
     if (e.chill > 0 && !bonus) {
       dmg = Math.max(0, dmg - 1);
@@ -2122,7 +2166,7 @@ export class Game {
     const mage = this.player.cls === 'mage';
     return Object.entries(CARDS).filter(([id, c]) => {
       if (c.cls && c.cls !== this.player.cls) return false;                       // spells are the Mage's alone
-      if (c.secret) return false;                                                 // only ever behind cracked walls
+      if (c.secret || c.mythic) return false;                                     // only ever behind cracked walls
       const makes = c.type === 'add' ? c.sym : c.type === 'upgrade' ? c.to : null;
       if (makes && !this.symOk(makes)) return false;                              // ... and she never takes up steel
       if (c.type === 'upgrade') return c.from.some(f => bag.includes(f));
@@ -2181,12 +2225,14 @@ export class Game {
       if (P.relics.size >= 5) this.achieve('relic_hunter');
       if (c.relic === 'horseshoe') P.luck = Math.round((P.luck + 0.1) * 100) / 100;
       if (c.relic === 'trinity_sigil') { P.might++; P.guard++; P.luck = Math.round((P.luck + 0.15) * 100) / 100; }
+      if (c.relic === 'crown_of_stars') { P.might += 2; P.guard += 2; P.luck = Math.round((P.luck + 0.25) * 100) / 100; }
     } else if (c.type === 'boost') {
       if (c.stat === 'maxHp') { P.maxHp += c.amount; this.slot.state.maxHp = P.maxHp; this.heal(c.amount, 0, 0); }
       else if (c.stat === 'hunger') {
         P.might += 3; P.maxHp = Math.max(5, P.maxHp - 8); P.hp = Math.min(P.hp, P.maxHp);
         this.slot.state.maxHp = P.maxHp; this.slot.state.hp = P.hp;
       } else if (c.stat === 'heartfruit') { P.maxHp += 4; this.slot.state.maxHp = P.maxHp; this.heal(P.maxHp, 0, 0); }
+      else if (c.stat === 'star_heart') { P.maxHp += 12; this.slot.state.maxHp = P.maxHp; this.heal(P.maxHp, 0, 0); }
       else P[c.stat] += c.amount;
     } else if (c.type === 'purge') {
       const i = P.bag.indexOf('skull');
@@ -2265,19 +2311,34 @@ export class Game {
       let ids = this.rollCards(P.relics.has('thieves_glove') ? 4 : 3, 0.4);
       const S = this.level.secret;                   // a sealed wall on this floor and nothing to open it with: sell a Bomb
       if (S && !S.open && !m.secret && !this.canBlast() && !ids.includes('bomb')) ids[ids.length - 1] = 'bomb';
-      if (m.secret) {                                // the secret dealer: two unique relics and two rare-or-better cards
-        const rel = Object.keys(CARDS).filter(id => CARDS[id].secret && !this.player.relics.has(CARDS[id].relic));
-        for (let i = rel.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rel[i], rel[j]] = [rel[j], rel[i]]; }
-        ids = [...rel.slice(0, 2), ...this.rollCards(4 - Math.min(2, rel.length), 1, 'rare')];
+      if (m.secret) {                                // the Sanctum's dealer: two mythic wares, a unique relic, a rare-or-better card
+        const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+        const myth = shuffle(this.mythicWares());
+        const rel = shuffle(Object.keys(CARDS).filter(id => CARDS[id].secret && !this.player.relics.has(CARDS[id].relic)));
+        ids = [...myth.slice(0, 2), ...rel.slice(0, 1)];
+        ids.push(...this.rollCards(4 - ids.length, 1, 'rare').filter(id => !ids.includes(id)));
       }
-      m.stock = ids.map(id => ({ id, price: Math.max(1, Math.round((CARD_PRICE[CARDS[id].rarity] + Math.floor(this.floor / 2) * 2) * mark)), sold: false }));
+      // mythic wares have their own asking price, and their dealers take no discounts (and no fool's gold)
+      const price = id => CARDS[id].mythic ? CARDS[id].price + Math.floor(this.floor / 2) * 2
+        : Math.max(1, Math.round((CARD_PRICE[CARDS[id].rarity] + Math.floor(this.floor / 2) * 2) * mark));
+      m.stock = ids.map(id => ({ id, price: price(id), sold: false }));
     }
     this.shop = { m, items: m.stock.filter(it => !it.sold) };
-    this.cards.layout(this.W, this.H, this.slot, [0.28, 0.86], 0.78);
+    this.cards.layout(this.W, this.H, this.slot, [0.28, 0.86], this.shop.items.length > 3 ? 0.7 : 0.78);
     this.cards.show(this.shop.items.map(it => ({ id: it.id, price: it.price })), this.time, 'below', -1);
     this.cards.keyFocus = -1;
     this.state = 'shop';
     this.audio.play('card');
+  }
+
+  // the mythic wares this hero could use: their class's arms, relics they don't own yet
+  mythicWares() {
+    return Object.keys(CARDS).filter(id => {
+      const c = CARDS[id];
+      if (!c.mythic || (c.cls && c.cls !== this.player.cls)) return false;
+      if (c.type === 'add' && !this.symOk(c.sym)) return false;
+      return c.type !== 'passive' || !this.player.relics.has(c.relic);
+    });
   }
 
   leaveShop() {
@@ -2323,9 +2384,10 @@ export class Game {
       if (is(k, 'n1')) buy(0);
       if (is(k, 'n2')) buy(1);
       if (is(k, 'n3')) buy(2);
+      if (is(k, 'n4')) buy(3);
       if (is(k, 'cancel')) act('leave');
       if (is(k, 'turnL')) this.cards.keyFocus = Math.max(0, (this.cards.keyFocus < 0 ? 1 : this.cards.keyFocus) - 1);
-      if (is(k, 'turnR')) this.cards.keyFocus = Math.min(2, this.cards.keyFocus + 1);
+      if (is(k, 'turnR')) this.cards.keyFocus = Math.min(this.shop.items.length - 1, this.cards.keyFocus + 1);
       if (is(k, 'confirm') && this.cards.keyFocus >= 0) buy(this.cards.keyFocus);
     }
     for (const c of clicks) {
@@ -2486,10 +2548,11 @@ export class Game {
     const fx = Math.sin(this.cam.yaw), fz = Math.cos(this.cam.yaw);
     const [ex, ey, ez] = this.eye;
 
-    // ---- sky (ruins)
-    if (B.sky) {
+    // ---- sky (the ruins' day, the Starlit Sanctum's void)
+    if (B.sky || B.stars) {
       const inv = invert(mul(this.proj, this.view));
-      this.R.drawSky(inv, [0.3, 0.42, 0.66], [0.62, 0.68, 0.76], [0.86, 0.88, 0.92], now);
+      if (B.stars) this.R.drawSky(inv, [0.015, 0.008, 0.04], [0.11, 0.05, 0.19], [0.46, 0.22, 0.66], now, 1);
+      else this.R.drawSky(inv, [0.3, 0.42, 0.66], [0.62, 0.68, 0.76], [0.86, 0.88, 0.92], now);
     }
 
     // ---- lights: nearest static lights + a faint lantern carried by the player
@@ -2511,8 +2574,11 @@ export class Game {
     });
     this.R.drawBatches(this.static);
     if (this.level.secret) this.R.drawBatches(this.level.secret.open ? this.alcove : this.crack);
-    for (const sp of this.spinners || [])                         // the foundry's turning gears
-      this.R.drawModel(this.a.models[sp.model], trs(sp.x, 0, sp.z, sp.ry, 0, 0, 1), { pose: { gear: { rz: now * 0.9 } } });
+    for (const sp of this.spinners || [])                         // the foundry's turning gears, the sanctum's crystals
+      if (this.a.models[sp.model])
+        this.R.drawModel(this.a.models[sp.model], trs(sp.x, 0, sp.z, sp.ry, 0, 0, 1), { pose: sp.crystal !== undefined
+          ? { crystal: { ry: now * 0.9 + sp.crystal, ty: Math.sin(now * 1.6 + sp.crystal) * 0.07 } } : { gear: { rz: now * 0.9 } } });
+    if (this.sky) this.drawSanctumSky(now);
 
     // ---- entities
     for (const e of this.entities) {
@@ -2604,7 +2670,39 @@ export class Game {
     }
   }
 
+  // the rune ring turning beyond the terrace, isles of rock bobbing in the void
+  drawSanctumSky(now) {
+    const { ring, isles } = this.sky;
+    if (this.a.models.sanctum_ring)
+      this.R.drawModel(this.a.models.sanctum_ring, mul(trs(ring.x, ring.y + Math.sin(now * 0.4) * 0.15, ring.z, 0, ring.tilt, 0, ring.s), rotY(now * 0.07)));
+    for (const i of isles) {
+      const m = this.a.models[i.model];
+      if (m) this.R.drawModel(m, trs(i.x, i.y + Math.sin(now * 0.35 + i.ph) * 0.35, i.z, i.ry + now * 0.025, 0, 0, i.s));
+    }
+  }
+
+  // the Starlit Sanctum's dealers: they float, turn to watch you, and their rings, crystals and lanterns move
+  drawSanctumNpc(mc, now) {
+    const x = mc.x * CELL, z = mc.y * CELL - 0.45;                  // they keep a little back from you
+    const yaw = Math.atan2(this.cam.x - x, this.cam.z - z), S = 0.74;
+    if (mc.npc === 'oracle') {
+      const m = this.a.models.npc_oracle;
+      if (!m) return;
+      const b = Math.sin(now * 1.1) * 0.06;
+      this.R.drawModel(m, trs(x, 0, z, yaw, 0, 0, S), { pose: {
+        eye: { ty: b, ry: Math.sin(now * 0.7) * 0.18, rx: Math.sin(now * 0.53) * 0.08 },
+        ring0: { rz: now * 0.6, ty: b }, ring1: { ry: -now * 0.45, ty: b }, ring2: { rx: now * 0.35, ty: b } } });
+      return;
+    }
+    const m = this.a.models.npc_veiled;
+    if (!m) return;
+    const bob = Math.sin(now * 1.3) * 0.05;
+    this.R.drawModel(m, trs(x, bob, z, yaw + Math.sin(now * 0.4) * 0.08, 0, 0, S), { pose: {
+      orbit: { ry: now * 0.8 }, orb: { ry: now * 1.6, ty: Math.sin(now * 2.2) * 0.03 }, staff: { rz: Math.sin(now * 0.9) * 0.03 } } });
+  }
+
   drawMerchant(mc, now) {
+    if (mc.npc) { this.drawSanctumNpc(mc, now); return; }
     const gob = this.a.models.merchant;
     const yaw = Math.atan2(this.cam.x - mc.x * CELL, this.cam.z - mc.y * CELL);
     const mats = mc.animator ? mc.animator.matrices() : null;
@@ -2748,7 +2846,7 @@ export class Game {
       const tanH = Math.tan(FOV / 2);
       this.fx.draw(g, W, H, (x, y, z) => {
         const [sx, sy, w] = this.project(x, y, z);
-        return w > 0.05 ? [sx, sy, H / 2 / (w * tanH)] : null;
+        return w > 0.05 ? [sx, sy, H / 2 / (w * tanH), w] : null;
       }, FX_PIXEL);
       U.drawFloats(now);
     }
@@ -2811,7 +2909,8 @@ export class Game {
       return;
     }
     if (P.kind === 'chest' || P.kind === 'merchant' || P.kind === 'wayside') {
-      const t = P.kind === 'chest' ? 'A chest blocks the way.' : 'A goblin merchant waves you over.';
+      const t = P.kind === 'chest' ? 'A chest blocks the way.' : P.ent && P.ent.npc === 'oracle' ? 'A great eye turns to regard you.'
+        : P.ent && P.ent.npc === 'veiled' ? 'The Star-Veiled inclines its hood toward you.' : 'A goblin merchant waves you over.';
       U.text(t, W / 2, top * 0.2, { size: 14, align: 'center', color: '#ffd878', alpha: pop });
       if (P.kind === 'wayside') U.text(`You have ${this.player.gold} gold`, W / 2, top * 0.2 + 14, { size: 10, align: 'center', color: '#ffd24a', alpha: pop, bold: false });
       const bw = 150, by = P.kind === 'wayside' ? top * 0.2 + 22 : top - 34;     // keep the merchant's face clear
@@ -3015,8 +3114,11 @@ export class Game {
 
   drawShopUI(now, ptr) {
     const U = this.ui, W = this.W;
-    U.text('THE MERCHANT', W * 0.26, 70, { size: 18, align: 'center', color: '#b8e878', spacing: 2 });
-    U.text('"Cards for coin, traveler."', W * 0.26, 84, { size: 10, align: 'center', color: '#d8ccb8', bold: false });
+    const who = this.shop.m.npc === 'oracle' ? ['THE UNBLINKING', '"I have seen what you will need. It is not cheap."', '#6ae8d8']
+      : this.shop.m.npc === 'veiled' ? ['ASTRAEL, THE STAR-VEILED', '"The stars remember what the deep forgets."', '#c8a0ff']
+      : ['THE MERCHANT', '"Cards for coin, traveler."', '#b8e878'];
+    U.text(who[0], W * 0.26, 70, { size: who[0].length > 16 ? 14 : 18, align: 'center', color: who[2], spacing: 2 });
+    U.text(who[1], W * 0.26, 84, { size: 10, align: 'center', color: '#d8ccb8', bold: false });
     this.drawCardInfo(this.cardHover >= 0 ? this.cardHover : this.cards.keyFocus, now);
     const hasCurse = this.player.bag.includes('skull');
     const bx = 12, by = this.H - 30;

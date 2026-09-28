@@ -62,7 +62,7 @@ export class FX {
     if (this.wparts.length > 300) return;
     this.wparts.push({ x, y, z, vx: o.vx || 0, vy: o.vy || 0, vz: o.vz || 0, lift: o.lift || 0, drag: o.drag || 0, t: 0,
                        life: o.life, size: o.size, size1: o.size * (o.grow ?? 1), shape: o.shape || 'smoke',
-                       col: o.col, add: !!o.add, alpha: o.alpha ?? 1, w: o.w || 1, rot: 0, vr: 0 });
+                       col: o.col, add: !!o.add, alpha: o.alpha ?? 1, w: o.w || 1, rot: 0, vr: 0, glyph: o.glyph || 0, near: o.near || 0 });
   }
 
   // ---------------------------------------------------------------- emitters
@@ -200,7 +200,7 @@ export class FX {
     if (project) {
       for (const p of this.wparts) {
         const s = project(p.x, p.y, p.z);
-        if (!s) continue;
+        if (!s || (p.near && s[3] < p.near)) continue;
         this.drawPart(layer(p), { ...p, x: s[0], y: s[1], size: p.size * s[2], size1: p.size1 * s[2] });
       }
     }
@@ -271,6 +271,17 @@ export class FX {
       }
       case 'plus':
         g.fillRect(p.x - s, p.y - s / 3, s * 2, s * 2 / 3); g.fillRect(p.x - s / 3, p.y - s, s * 2 / 3, s * 2); break;
+      case 'rune': {                                                     // a little glowing rune: a stem and two strokes
+        const q = i => (((p.glyph || 1) * (i * 7919 + 13)) % 997) / 997;
+        g.lineWidth = Math.max(1, s * 0.22);
+        g.beginPath();
+        g.moveTo(p.x, p.y - s); g.lineTo(p.x, p.y + s);
+        for (let i = 0; i < 2; i++) {
+          const y0 = p.y + (q(i) - 0.5) * s * 1.4, side = q(i + 5) < 0.5 ? -1 : 1, up = q(i + 9) < 0.5 ? -1 : 1;
+          g.moveTo(p.x, y0); g.lineTo(p.x + side * s * 0.7, y0 + up * s * 0.6);
+        }
+        g.stroke(); break;
+      }
       case 'heart': {
         const u = s / 3;
         g.fillRect(p.x - 2 * u, p.y - u, 2 * u, 2 * u); g.fillRect(p.x, p.y - u, 2 * u, 2 * u);
@@ -1396,4 +1407,76 @@ export const EVENTS = {
     embers(fx, x, y, C.fire, 30, 1.5);
     S.play('rebirth');
   },
+};
+
+
+// ---------------------------------------------------------------- the mythic wares of the Starlit Sanctum
+Object.assign(RECIPES, {
+  starblade: melee({                                     // two cuts in starlight: an X that bursts into stars
+    travel: 0.14, glint: '#b8fff0',
+    hit(fx, x, y, S, I) {
+      const ST = { col: '#2ab8b0', edge: '#b8fff0', core: '#ffffff', life: 0.32 };
+      cut(fx, x, y, 0.25 * Math.PI, { r: 44, span: 1.9, w: 9, ...ST });
+      cut(fx, x, y, 0.75 * Math.PI, { r: 44, span: 1.9, w: 9, ...ST, delay: 0.08, bend: -1 });
+      later(0.14, () => {
+        stars(fx, x, y, ['#ffffff', '#6ae8d8', '#ffe8a0'], 16, 40);
+        fx.ring(x, y, 4, 60, 0.35, '#6ae8d8', 3);
+      });
+      S.play('shing');
+    },
+  }),
+  supernova: SPELL({                                     // a star flung at the foe - it goes up in a blinding ring
+    cast: 'starcall', glow: 'rgba(180,255,245,0.95)', travel: 0.4,
+    head: { r: 12, col: 'rgba(160,255,240,0.95)', core: '#ffffff' },
+    trail: { shape: 'star', col: ['#ffffff', '#6ae8d8', '#ffe8a0'], speed: [4, 20], life: [0.3, 0.5], size: [1, 2.2], add: true },
+    hit(fx, x, y, S) {
+      fx.flash('#ffffff', 0.35, 0.4);
+      fx.glow(x, y, 60, 0.6, 'rgba(160,255,240,1)', 1.6);
+      fx.ring(x, y, 6, 110, 0.6, '#6ae8d8', 5);
+      fx.ring(x, y, 4, 70, 0.45, '#ffe8a0', 3);
+      fx.burst(x, y, { n: 40, speed: [80, 280], life: [0.5, 1.0], size: [2, 4], shape: 'star', col: ['#ffffff', '#6ae8d8', '#ffe8a0'], add: true, drag: 1.5 });
+      fx.burst(x, y, { n: 24, speed: [40, 140], life: [0.6, 1.1], size: [2, 4], col: C.fire, add: true, g: -60 });
+      S.shake(1.1); S.play('meteor');
+    },
+  }),
+  dragon_hoard: {                                        // a hoard spills out: gems, then a river of coins
+    target: 'gold', travel: 0.36,
+    launch(fx, a, b, S) {
+      fx.glow(a[0], a[1], 26, 0.5, 'rgba(255,210,90,0.95)');
+      fx.burst(a[0], a[1], { n: 16, speed: [50, 150], life: [0.4, 0.8], size: [2, 3.5], shape: 'shard', col: ['#ff5a8a', '#6aff9a', '#5ac8ff', '#ffe84a'], add: true, drag: 2 });
+      COIN(8, 'coins', true).launch(fx, a, b, S);
+    },
+    impact(fx, x, y, S, I) {
+      COIN(8, 'coins', true).impact(fx, x, y, S, I);
+      stars(fx, x, y, C.gold, 14);
+    },
+  },
+  elixir: toHp({ trail: { shape: 'star', col: ['#ffffff', '#6ae8d8', '#c890ff'], speed: [3, 14], life: [0.3, 0.6], size: [1, 2.2], add: true },
+                 hit(fx, x, y, S) {
+                   HEAL(fx, x, y, 22, ['#ffffff', '#6ae8d8', '#b8fff0']);
+                   fx.ring(x, y, 5, 48, 0.55, '#6ae8d8', 3);
+                   fx.burst(x, y, { n: 12, speed: [20, 70], life: [0.8, 1.3], size: [2.5, 4], shape: 'heart', col: ['#ff8ab8', '#ffd0e0'], g: -50 });
+                   stars(fx, x, y, ['#ffffff', '#ffe8a0'], 10);
+                   S.play('emberflask');
+                 } }),
+  aegis: toHp({ trail: { shape: 'star', col: ['#ffffff', '#ffe8a0', '#6ae8d8'], speed: [3, 12], life: [0.2, 0.4], size: [1, 2], add: true },
+                hit(fx, x, y, S) {
+                  shieldPop(fx, x, y, ['#ffffff', '#ffe8a0', '#6ae8d8'], 3);
+                  fx.ring(x, y, 10, 56, 0.55, '#ffe8a0', 4);
+                  fx.ring(x, y, 6, 36, 0.45, '#6ae8d8', 2);
+                  stars(fx, x, y, ['#ffffff', '#ffe8a0'], 14);
+                  S.shake(0.3); S.play('bulwark');
+                } }),
+});
+
+// the Wishing Star: falling stars catch the foe's blow and strike it
+EVENTS.starfallStrike = (fx, x, y, S) => {
+  for (let i = 0; i < 3; i++) {
+    fx.shot({ from: [x + R(-160, -40), y - R(180, 240)], to: [x + R(-14, 14), y + R(-10, 10)], dur: 0.3 + i * 0.06, arc: 0, ease: k => k * k,
+              head: { r: 7, col: 'rgba(120,240,230,0.9)', core: '#ffffff' },
+              trail: { shape: 'star', col: ['#ffffff', '#6ae8d8', '#c890ff'], speed: [2, 12], life: [0.25, 0.5], size: [1, 2], add: true }, rate: 90,
+              onHit: (hx, hy) => { stars(fx, hx, hy, ['#ffffff', '#6ae8d8'], 10); fx.glow(hx, hy, 18, 0.35, 'rgba(120,240,230,1)'); } });
+  }
+  later(0.34, () => { fx.flash('#b8fff0', 0.18, 0.3); fx.ring(x, y, 6, 60, 0.45, '#6ae8d8', 4); });
+  S.play('starfall');
 };

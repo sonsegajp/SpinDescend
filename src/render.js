@@ -2,8 +2,8 @@
 // fog, banded lighting for the pixel-art look, sky, and model/batch drawing.
 // PS1 look (world pass only): vertices snap to a coarse screen grid (wobble),
 // textures blend toward affine mapping (warp) and colour is dithered to 15 bit.
-import { gl, program, texFromImage, solidTex } from './gl.js?v=20260926224846';
-import { ident, mul } from './math.js?v=20260926224846';
+import { gl, program, texFromImage, solidTex } from './gl.js?v=20260926234503';
+import { ident, mul } from './math.js?v=20260926234503';
 
 const VS = `#version 300 es
 layout(location=0) in vec3 aPos;
@@ -93,8 +93,39 @@ precision highp float;
 in vec2 vP;
 uniform mat4 uInvVP;
 uniform vec3 uTop, uHorizon, uCloud;
-uniform float uTime;
+uniform float uTime, uStars;
 out vec4 frag;
+float h3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float n3(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+             mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
+float fbm3(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * n3(p); p *= 2.03; a *= 0.5; } return s; }
+// the Starlit Sanctum's void: a deep violet night all the way round (above and below), drifting nebulae,
+// a band of pale starlight, and stars that twinkle
+vec3 starVoid(vec3 d) {
+  float t = 1.0 - abs(d.y);
+  vec3 col = mix(uTop, uHorizon, t * t);
+  vec3 q = d * 2.2 + vec3(uTime * 0.006, 0.0, uTime * 0.004);
+  float neb = fbm3(q), neb2 = fbm3(q * 1.7 + 11.0);
+  col += uCloud * smoothstep(0.48, 0.82, neb) * 0.55;
+  col += vec3(0.08, 0.3, 0.36) * smoothstep(0.55, 0.86, neb2) * 0.5;
+  vec3 axis = normalize(vec3(0.3, 0.9, 0.35));
+  float band = exp(-pow(dot(d, axis) * 4.0, 2.0));
+  col += vec3(0.24, 0.2, 0.36) * band * (0.35 + 0.65 * fbm3(d * 9.0));
+  for (int k = 0; k < 2; k++) {
+    float sc = k == 0 ? 70.0 : 150.0;
+    vec3 p = d * sc, c = floor(p);
+    float hs = h3(c + float(k) * 17.0);
+    vec3 off = vec3(h3(c + 3.1), h3(c + 7.7), h3(c + 5.3)) * 0.6 + 0.2;
+    float r = length(p - c - off);
+    float thr = k == 0 ? 0.93 : 0.9 - band * 0.12;
+    float st = step(thr, hs) * smoothstep(k == 0 ? 0.32 : 0.22, 0.0, r);
+    float tw = 0.55 + 0.45 * sin(uTime * (1.5 + hs * 4.0) + hs * 60.0);
+    vec3 sc3 = mix(vec3(0.75, 0.8, 1.0), vec3(1.0, 0.85, 0.95), h3(c + 9.9));
+    col += sc3 * st * tw * (k == 0 ? 1.1 : 0.6);
+  }
+  return col;
+}
 float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
@@ -102,6 +133,7 @@ float fbm(vec2 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a
 void main() {
   vec4 w = uInvVP * vec4(vP, 1.0, 1.0);
   vec3 d = normalize(w.xyz / w.w);
+  if (uStars > 0.5) { frag = vec4(floor(starVoid(d) * 24.0 + 0.5) / 24.0, 1.0); return; }
   float t = clamp(d.y * 1.6 + 0.12, 0.0, 1.0);
   vec3 col = mix(uHorizon, uTop, t);
   vec2 cp = d.xz / max(d.y + 0.18, 0.05) * 1.2 + vec2(uTime * 0.012, 0.0);
@@ -204,13 +236,14 @@ export class Renderer {
     this.setTint();
   }
 
-  drawSky(invVP, top, horizon, cloud, time) {
+  drawSky(invVP, top, horizon, cloud, time, stars = 0) {
     const s = this.sky.use();
     gl.uniformMatrix4fv(s.u('uInvVP'), false, invVP);
     gl.uniform3fv(s.u('uTop'), top);
     gl.uniform3fv(s.u('uHorizon'), horizon);
     gl.uniform3fv(s.u('uCloud'), cloud);
     gl.uniform1f(s.u('uTime'), time);
+    gl.uniform1f(s.u('uStars'), stars);
     gl.depthMask(false);
     gl.bindVertexArray(this.skyVAO);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
